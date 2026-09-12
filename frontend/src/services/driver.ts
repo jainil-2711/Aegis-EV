@@ -9,6 +9,7 @@ import type {
   ScheduleOverrideRequest,
   ScheduleOverrideResponse,
 } from "../types/api";
+import { apiFetch, readApiError } from "./http";
 
 const BASE_URL = "/api/driver";
 
@@ -35,12 +36,12 @@ async function handle<T>(res: Response): Promise<T> {
 }
 
 export async function getDriverSession(): Promise<DriverSessionResponse> {
-  return handle(await fetch(`${BASE_URL}/session`));
+  return handle(await apiFetch(`${BASE_URL}/session`));
 }
 
 export async function updateDriverPreferences(update: DriverPreferencesUpdate): Promise<DriverSessionResponse> {
   return handle(
-    await fetch(`${BASE_URL}/preferences`, {
+    await apiFetch(`${BASE_URL}/preferences`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(update),
@@ -49,12 +50,12 @@ export async function updateDriverPreferences(update: DriverPreferencesUpdate): 
 }
 
 export async function getDriverRecommendation(): Promise<DriverRecommendationResponse> {
-  return handle(await fetch(`${BASE_URL}/recommendation`));
+  return handle(await apiFetch(`${BASE_URL}/recommendation`));
 }
 
 export async function acceptSchedule(req: ScheduleAcceptRequest): Promise<ScheduleAcceptResponse> {
   return handle(
-    await fetch(`${BASE_URL}/schedule/accept`, {
+    await apiFetch(`${BASE_URL}/schedule/accept`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req),
@@ -64,7 +65,7 @@ export async function acceptSchedule(req: ScheduleAcceptRequest): Promise<Schedu
 
 export async function overrideSchedule(req: ScheduleOverrideRequest): Promise<ScheduleOverrideResponse> {
   return handle(
-    await fetch(`${BASE_URL}/schedule/override`, {
+    await apiFetch(`${BASE_URL}/schedule/override`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req),
@@ -73,5 +74,5 @@ export async function overrideSchedule(req: ScheduleOverrideRequest): Promise<Sc
 }
 
 export async function getDriverSessionStatus(): Promise<DriverSessionStatusResponse> {
-  return handle(await fetch(`${BASE_URL}/session/status`));
+  return handle(await apiFetch(`${BASE_URL}/session/status`));
 }

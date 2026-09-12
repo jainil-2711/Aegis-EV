@@ -1,5 +1,5 @@
 """
-GreenCharge — Operator API Router (P4)
+Aegis — Operator API Router (P4)
 
 Endpoints (api-contract.md SS4, SS5):
     GET /api/stations
@@ -18,6 +18,8 @@ Registration (main.py, append-only one line):
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.auth import Principal, ROLE_NETWORK, require_role
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -41,24 +43,25 @@ router = APIRouter()
 
 
 @router.get("/stations", response_model=StationsResponse)
-def read_stations(db: Session = Depends(get_db)):
+def read_stations(db: Session = Depends(get_db), _: Principal = Depends(require_role(ROLE_NETWORK))):
     return get_stations(db)
 
 
 @router.get("/chargers", response_model=ChargersResponse)
 def read_chargers(
-    station_id: str | None = Query(default=None), db: Session = Depends(get_db)
+    station_id: str | None = Query(default=None), db: Session = Depends(get_db),
+    _: Principal = Depends(require_role(ROLE_NETWORK)),
 ):
     return get_chargers(db, station_id=station_id)
 
 
 @router.get("/network/status", response_model=NetworkStatusResponse)
-def read_network_status(db: Session = Depends(get_db)):
+def read_network_status(db: Session = Depends(get_db), _: Principal = Depends(require_role(ROLE_NETWORK))):
     return get_network_status(db)
 
 
 @router.get("/network/impact", response_model=NetworkImpactResponse)
-def read_network_impact(db: Session = Depends(get_db)):
+def read_network_impact(db: Session = Depends(get_db), _: Principal = Depends(require_role(ROLE_NETWORK))):
     try:
         return get_network_impact(db)
     except NoActiveScheduleError as exc:

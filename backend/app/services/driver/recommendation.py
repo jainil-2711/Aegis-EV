@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.models.charging_schedule_entry import ChargingScheduleEntry
 from app.models.ev import EV
+from app.models.energy_slot import EnergySlot
+from app.engine.green_score import calculate_green_score
 from app.models.optimization_run import OptimizationRun
 from app.schemas.driver import DriverRecommendationResponse
 from app.services.optimization.optimizer import get_active_run
@@ -51,6 +53,16 @@ def get_driver_recommendation(db: Session, ev_id: str) -> DriverRecommendationRe
     total_co2_kg = sum(e.co2_kg for e in entries)
     renewable_share_pct = (total_renewable_kwh / total_energy_kwh * 100.0) if total_energy_kwh else 0.0
     price_per_kwh = (total_cost / total_energy_kwh) if total_energy_kwh else 0.0
+    slot_rows = list(db.execute(select(EnergySlot).where(EnergySlot.timestamp.in_([e.timestamp for e in entries]))).scalars().all())
+    slot_map = {row.timestamp: row for row in slot_rows}
+    weighted_carbon = sum(e.grid_energy_kwh * slot_map[e.timestamp].carbon_intensity for e in entries if e.timestamp in slot_map)
+    average_carbon = weighted_carbon / total_energy_kwh if total_energy_kwh else 0.0
+    green_score = calculate_green_score(
+        renewable_share_pct=renewable_share_pct,
+        average_carbon_intensity=average_carbon,
+        grid_energy_kwh=sum(e.grid_energy_kwh for e in entries),
+        total_energy_kwh=total_energy_kwh,
+    )
 
     return DriverRecommendationResponse(
         optimization_run_id=run.id,
@@ -60,23 +72,24 @@ def get_driver_recommendation(db: Session, ev_id: str) -> DriverRecommendationRe
         price_per_kwh=round(price_per_kwh, 2),
         renewable_share_pct=round(renewable_share_pct, 1),
         co2_impact_kg=round(total_co2_kg, 2),
-        green_score=None,
-        why=_build_why(renewable_share_pct, run.mode),
+        green_score=green_score,
+        why=_build_why(renewable_share_pct, run.mode, green_score),
     )
 
 
-def _build_why(renewable_share_pct: float, mode: str) -> str:
+def _build_why(renewable_share_pct: float, mode: str, green_score: float) -> str:
     if renewable_share_pct >= 60:
         return (
-            "This window aligns strongly with renewable availability while meeting "
-            f"your charging requirements under the {mode} network objective."
+            f"Aegis selected this window from the active {mode} network schedule: "
+            f"{renewable_share_pct:.0f}% renewable alignment, while keeping your charging target feasible. "
+            f"Green Score: {green_score:.0f}/100."
         )
     if renewable_share_pct >= 30:
         return (
-            "This window balances renewable availability, network conditions, and "
-            f"your charging requirements under the {mode} network objective."
+            f"Aegis found a feasible balance between renewable availability and the {mode} network objective. "
+            f"The active schedule gives {renewable_share_pct:.0f}% renewable alignment and a Green Score of {green_score:.0f}/100."
         )
     return (
-        "Renewable availability is limited in the feasible window, so the schedule "
-        f"prioritizes the {mode} network objective while respecting your constraints."
+        f"Renewable availability is limited in your feasible window, so Aegis follows the {mode} network objective "
+        f"while respecting your charging constraints. Green Score: {green_score:.0f}/100."
     )

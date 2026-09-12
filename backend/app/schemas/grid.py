@@ -1,5 +1,5 @@
 """
-GreenCharge — Grid schemas (api-contract.md SS3, data-spec.md SS8)
+Aegis — Grid schemas (api-contract.md SS3, data-spec.md SS8)
 
 Domain: P1. Shape is part of the frozen contract — mirrors api.ts.
 """

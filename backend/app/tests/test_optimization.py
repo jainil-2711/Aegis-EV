@@ -157,3 +157,61 @@ def test_missing_ortools_is_reported_cleanly(settings):
         service = OptimizationService(db, settings)
         with pytest.raises(OptimizationError, match="OR-Tools is required"):
             service.run(OperatorObjective.balanced)
+
+
+def test_persisted_run_metrics_are_stable_without_recomputation(db_session):
+    from app.models.optimization_run import OptimizationRun
+    from app.services.optimization.optimizer import Metrics, get_run_metrics
+
+    run = OptimizationRun(
+        id="RUN-SNAPSHOT",
+        mode="balanced",
+        scenario="normal",
+        baseline_peak_kw=100.0,
+        optimized_peak_kw=90.0,
+        baseline_cost=1000.0,
+        optimized_cost=900.0,
+        baseline_renewable_share_pct=40.0,
+        optimized_renewable_share_pct=60.0,
+        baseline_co2_kg=20.0,
+        optimized_co2_kg=10.0,
+        status="candidate",
+    )
+    db_session.add(run)
+    db_session.commit()
+
+    before, after = get_run_metrics(db_session, None, run)
+    assert isinstance(before, Metrics)
+    assert before.peak_kw == 100.0
+    assert after.peak_kw == 90.0
+    assert before.renewable_share_pct == 40.0
+    assert after.renewable_share_pct == 60.0
+    assert before.co2_kg == 20.0
+    assert after.co2_kg == 10.0
+
+
+def test_scenario_modifiers_change_one_base_dataset(settings):
+    from app.services.optimization.optimizer import OptimizationService, SlotContext
+    from app.schemas.enums import Scenario
+
+    base = [SlotContext(
+        timestamp=datetime(2026, 9, 12, 12, 0),
+        base_load_kw=500.0,
+        renewable_kw=200.0,
+        grid_capacity_kw=2200.0,
+        electricity_price=8.0,
+        carbon_intensity=0.75,
+    )]
+    class DummyDB: pass
+    service = OptimizationService(DummyDB(), settings)
+
+    normal = service._apply_scenario(base, Scenario.normal)[0]
+    high_demand = service._apply_scenario(base, Scenario.high_demand)[0]
+    high_renewable = service._apply_scenario(base, Scenario.high_renewable)[0]
+    low_renewable = service._apply_scenario(base, Scenario.low_renewable)[0]
+
+    assert normal == base[0]
+    assert high_demand.base_load_kw > base[0].base_load_kw
+    assert high_demand.electricity_price > base[0].electricity_price
+    assert high_renewable.renewable_kw > base[0].renewable_kw
+    assert low_renewable.renewable_kw < base[0].renewable_kw

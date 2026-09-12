@@ -16,6 +16,7 @@ import type {
   RenewableAvailability,
   SignalOperator,
 } from "../../types/api";
+import AegisIntelligence from "../../components/AegisIntelligence";
 
 const conditions: GridCondition[] = [
   "normal",
@@ -230,6 +231,17 @@ export default function GridView() {
         </div>
       </section>
 
+      <AegisIntelligence
+        title="Grid signal trace"
+        subtitle="System context"
+        items={[
+          { label: "Demand", value: `${status.grid_demand_kw.toFixed(0)} kW of ${status.grid_capacity_kw.toFixed(0)} kW capacity`, tone: "cyan" },
+          { label: "Renewable pulse", value: `${status.renewable_generation_kw.toFixed(0)} kW generation available now`, tone: "green" },
+          { label: "Headroom", value: `${status.headroom_kw.toFixed(0)} kW remaining before capacity`, tone: status.headroom_kw < 300 ? "amber" : "slate" },
+        ]}
+        footer="Aegis translates these system signals into optimizer inputs. Publishing a signal does not directly control any individual vehicle."
+      />
+
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-800">Upcoming grid slots</h2>
         <div className="mt-3 overflow-x-auto">
@@ -252,7 +264,7 @@ export default function GridView() {
                   <td className="px-3 py-2 text-green-700">{slot.renewable_kw.toFixed(0)} kW</td>
                   <td className="px-3 py-2 text-slate-600">{slot.grid_capacity_kw.toFixed(0)} kW</td>
                   <td className="px-3 py-2 text-slate-600">₹{slot.electricity_price.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-slate-600">{slot.carbon_intensity.toFixed(0)} g/kWh</td>
+                  <td className="px-3 py-2 text-slate-600">{slot.carbon_intensity.toFixed(3)} kgCO₂/kWh</td>
                 </tr>
               ))}
             </tbody>

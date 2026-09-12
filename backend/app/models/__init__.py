@@ -1,5 +1,5 @@
 """
-GreenCharge — SQLAlchemy models (SHARED)
+Aegis — SQLAlchemy models (SHARED)
 
 Importing this package registers every mapped class on `Base.metadata`, so
 `database.create_all_tables()` can create every table in one call.
@@ -19,6 +19,7 @@ from app.models.ev import EV
 from app.models.grid_signal import GridSignal
 from app.models.optimization_run import OptimizationRun
 from app.models.station import Station
+from app.models.user import User
 
 __all__ = [
     "Charger",
@@ -29,4 +30,5 @@ __all__ = [
     "GridSignal",
     "OptimizationRun",
     "Station",
+    "User",
 ]

@@ -8,13 +8,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: greencharge
-      POSTGRES_PASSWORD: greencharge
-      POSTGRES_DB: greencharge
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: aegis
+      POSTGRES_DB: aegis
     ports:
       - "5432:5432"
     volumes:
-      - greencharge_pgdata:/var/lib/postgresql/data
+      - aegis_pgdata:/var/lib/postgresql/data
 
 volumes:
-  greencharge_pgdata:
+  aegis_pgdata:

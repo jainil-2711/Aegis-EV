@@ -1,5 +1,5 @@
 """
-GreenCharge — Operator: Chargers Service (P4)
+Aegis — Operator: Chargers Service (P4)
 
 Owns:
     GET /api/chargers

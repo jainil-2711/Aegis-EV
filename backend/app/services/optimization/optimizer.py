@@ -1,5 +1,5 @@
 """
-GreenCharge — canonical optimization service (P2).
+Aegis — canonical optimization service (P2).
 
 The service owns the deterministic optimization implementation described in
 architecture.md / phases.md. OR-Tools CP-SAT is the canonical solver.
@@ -15,8 +15,8 @@ Phase 1–3 responsibilities implemented here:
 - GridSignal as a soft objective signal (never a hard constraint)
 - candidate schedule generation and metrics
 
-Pricing, carbon/Green Score engines, scenarios, explanations, and driver-facing
-APIs are deliberately kept out of this module until their planned phases.
+Pricing, carbon/Green Score engines, scenarios and driver-facing APIs remain
+separate modules; this service owns only the deterministic schedule/metric core.
 """
 
 from __future__ import annotations
@@ -130,52 +130,31 @@ def get_active_or_latest_run(db: Session) -> OptimizationRun | None:
 def get_run_metrics(
     db: Session, settings: Settings, run: OptimizationRun
 ) -> tuple[Metrics, Metrics]:
-    """Return the canonical baseline and candidate metrics for a stored run.
+    """Return the immutable metric snapshot captured when the run was created.
 
-    This is a read-only P2 integration surface for other role modules. It
-    centralizes metric reconstruction so driver/operator views do not compute
-    optimization impact independently.
+    A run represents one concrete optimization decision. Re-running the
+    optimizer here would allow later GridSignals/scenario state to silently
+    change the meaning of an older run. Persisted metrics keep baseline →
+    candidate impact auditable and stable.
     """
-    entries = list(
-        db.execute(
-            select(ChargingScheduleEntry)
-            .where(ChargingScheduleEntry.optimization_run_id == run.id)
-            .order_by(ChargingScheduleEntry.timestamp.asc(), ChargingScheduleEntry.ev_id.asc())
-        ).scalars().all()
+    return (
+        Metrics(
+            peak_kw=round(run.baseline_peak_kw, 2),
+            cost=round(run.baseline_cost, 2),
+            renewable_share_pct=round(run.baseline_renewable_share_pct, 2),
+            co2_kg=round(run.baseline_co2_kg, 2),
+        ),
+        Metrics(
+            peak_kw=round(run.optimized_peak_kw, 2),
+            cost=round(run.optimized_cost, 2),
+            renewable_share_pct=round(run.optimized_renewable_share_pct, 2),
+            co2_kg=round(run.optimized_co2_kg, 2),
+        ),
     )
-
-    candidate_cost = round(sum(e.cost for e in entries), 2)
-    total_energy = sum(e.energy_kwh for e in entries)
-    renewable_energy = sum(e.renewable_energy_kwh for e in entries)
-    candidate_co2 = round(sum(e.co2_kg for e in entries), 2)
-    candidate_share = round(
-        (renewable_energy / total_energy * 100.0) if total_energy else 0.0, 2
-    )
-    by_timestamp: dict[datetime, float] = {}
-    for entry in entries:
-        by_timestamp[entry.timestamp] = (
-            by_timestamp.get(entry.timestamp, 0.0) + entry.charging_power_kw
-        )
-    candidate_peak = round(max(by_timestamp.values(), default=0.0), 2)
-
-    baseline = OptimizationService(
-        db, settings
-    ).run(
-        mode=OperatorObjective(run.mode),
-        scenario=None,
-    ).baseline
-
-    candidate = Metrics(
-        peak_kw=candidate_peak,
-        cost=candidate_cost,
-        renewable_share_pct=candidate_share,
-        co2_kg=candidate_co2,
-    )
-    return baseline, candidate
 
 
 class OptimizationService:
-    """Deterministic OR-Tools implementation for GreenCharge."""
+    """Deterministic OR-Tools implementation for Aegis."""
 
     def __init__(self, db: Session, settings: Settings):
         self.db = db
@@ -188,14 +167,8 @@ class OptimizationService:
     ) -> OptimizationComputation:
         if cp_model is None:
             raise OptimizationError(
-                "OR-Tools is required for GreenCharge optimization. "
+                "OR-Tools is required for Aegis optimization. "
                 "Install dependencies with `pip install -r backend/requirements.txt`."
-            )
-
-        if scenario not in (None, Scenario.normal):
-            raise OptimizationError(
-                "Non-normal scenarios are reserved for Phase 12. "
-                "Use scenario='normal' or omit scenario for the current optimizer."
             )
 
         slots = self._load_slots()
@@ -221,6 +194,7 @@ class OptimizationService:
             )
             for s in slots
         ]
+        slot_contexts = self._apply_scenario(slot_contexts, scenario)
 
         baseline_power = self._solve_power_matrix(
             ev_contexts=contexts,
@@ -246,6 +220,43 @@ class OptimizationService:
             baseline_schedule=baseline_schedule,
             candidate_schedule=candidate_schedule,
         )
+
+    @staticmethod
+    def _apply_scenario(slots: list[SlotContext], scenario: Scenario | None) -> list[SlotContext]:
+        """Apply a deterministic modifier to the single base dataset in memory."""
+        scenario = scenario or Scenario.normal
+        if scenario == Scenario.normal:
+            return slots
+
+        adjusted: list[SlotContext] = []
+        for slot in slots:
+            if scenario == Scenario.high_demand:
+                base = round(slot.base_load_kw * 1.18 + 100.0, 1)
+                price = round(slot.electricity_price * 1.10, 2)
+                carbon = round(min(1.0, slot.carbon_intensity * 1.08), 3)
+            elif scenario == Scenario.high_renewable:
+                base = slot.base_load_kw
+                renewable = round(min(slot.grid_capacity_kw, slot.renewable_kw * 1.55 + 70.0), 1)
+                adjusted.append(
+                    SlotContext(slot.timestamp, base, renewable, slot.grid_capacity_kw,
+                                round(max(1.0, slot.electricity_price * 0.88), 2),
+                                round(max(0.05, slot.carbon_intensity * 0.68), 3))
+                )
+                continue
+            else:  # low_renewable
+                base = slot.base_load_kw
+                renewable = round(max(0.0, slot.renewable_kw * 0.35), 1)
+                adjusted.append(
+                    SlotContext(slot.timestamp, base, renewable, slot.grid_capacity_kw,
+                                round(slot.electricity_price * 1.12, 2),
+                                round(min(1.0, slot.carbon_intensity * 1.18), 3))
+                )
+                continue
+
+            adjusted.append(
+                SlotContext(slot.timestamp, base, slot.renewable_kw, slot.grid_capacity_kw, price, carbon)
+            )
+        return adjusted
 
     # ------------------------------------------------------------------
     # Data loading / validation
@@ -297,6 +308,10 @@ class OptimizationService:
         return contexts
 
     @staticmethod
+    def _effective_power_kw(evc: EVContext) -> float:
+        return max(0.0, min(evc.ev.max_charge_kw, evc.charger.max_power_kw))
+
+    @staticmethod
     def _required_energy_kwh(ev: EV) -> float:
         # Authoritative formula from data-spec.md: battery energy needed for
         # the SOC increase, adjusted for charging efficiency.
@@ -330,10 +345,8 @@ class OptimizationService:
 
         for evc in ev_contexts:
             ev = evc.ev
-            max_units = max(
-                0,
-                int(math.floor(min(ev.max_charge_kw, evc.charger.max_power_kw) / POWER_UNIT_KW + 1e-9)),
-            )
+            effective_power_kw = self._effective_power_kw(evc)
+            max_units = max(0, int(math.floor(effective_power_kw / POWER_UNIT_KW + 1e-9)))
             if max_units <= 0:
                 raise OptimizationError(f"EV {ev.id} has no usable charging power.")
 

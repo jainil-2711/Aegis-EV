@@ -1,6 +1,8 @@
 """Driver API routes (P3)."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.auth import Principal, ROLE_DRIVER, require_role
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -23,7 +25,7 @@ router = APIRouter()
 
 
 @router.get("/session", response_model=DriverSessionResponse)
-def read_driver_session(db: Session = Depends(get_db)):
+def read_driver_session(db: Session = Depends(get_db), _: Principal = Depends(require_role(ROLE_DRIVER))):
     try:
         return get_driver_session(db)
     except LookupError as exc:
@@ -31,7 +33,7 @@ def read_driver_session(db: Session = Depends(get_db)):
 
 
 @router.post("/preferences", response_model=DriverSessionResponse)
-def update_preferences(update: DriverPreferencesUpdate, db: Session = Depends(get_db)):
+def update_preferences(update: DriverPreferencesUpdate, db: Session = Depends(get_db), _: Principal = Depends(require_role(ROLE_DRIVER))):
     try:
         return update_driver_preferences(db, update)
     except LookupError as exc:
@@ -41,7 +43,7 @@ def update_preferences(update: DriverPreferencesUpdate, db: Session = Depends(ge
 
 
 @router.get("/recommendation", response_model=DriverRecommendationResponse)
-def read_driver_recommendation(ev_id: str = DEMO_EV_ID, db: Session = Depends(get_db)):
+def read_driver_recommendation(ev_id: str = DEMO_EV_ID, db: Session = Depends(get_db), _: Principal = Depends(require_role(ROLE_DRIVER))):
     try:
         return get_driver_recommendation(db, ev_id)
     except NoActiveScheduleError as exc:
@@ -55,6 +57,7 @@ def accept_recommendation(
     req: ScheduleAcceptRequest,
     ev_id: str = DEMO_EV_ID,
     db: Session = Depends(get_db),
+    _: Principal = Depends(require_role(ROLE_DRIVER)),
 ):
     try:
         return accept_schedule(db, ev_id, req)
@@ -69,6 +72,7 @@ def override_recommendation(
     req: ScheduleOverrideRequest,
     ev_id: str = DEMO_EV_ID,
     db: Session = Depends(get_db),
+    _: Principal = Depends(require_role(ROLE_DRIVER)),
 ):
     try:
         return override_schedule(db, ev_id, req)
@@ -77,7 +81,7 @@ def override_recommendation(
 
 
 @router.get("/session/status", response_model=DriverSessionStatusResponse)
-def read_session_status(ev_id: str = DEMO_EV_ID, db: Session = Depends(get_db)):
+def read_session_status(ev_id: str = DEMO_EV_ID, db: Session = Depends(get_db), _: Principal = Depends(require_role(ROLE_DRIVER))):
     try:
         return get_session_status(db, ev_id)
     except LookupError as exc:

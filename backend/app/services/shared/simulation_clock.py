@@ -1,5 +1,5 @@
 """
-GreenCharge — Simulation Clock (SHARED helper)
+Aegis — Simulation Clock (SHARED helper)
 
 The demo dataset lives on one fixed day (`settings.demo_day`). "Current
 time" for the demo is real wall-clock time-of-day mapped onto that fixed

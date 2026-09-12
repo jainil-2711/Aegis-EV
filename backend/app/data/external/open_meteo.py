@@ -1,5 +1,5 @@
 """
-GreenCharge — Optional Open-Meteo adapter (P1, Phase 6)
+Aegis — Optional Open-Meteo adapter (P1, Phase 6)
 
 External renewable/weather enrichment is OPTIONAL (PRD.md SS12,
 architecture.md SS11). This module must:
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger("greencharge.external.open_meteo")
+logger = logging.getLogger("aegis.external.open_meteo")
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 

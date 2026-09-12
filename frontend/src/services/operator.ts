@@ -1,5 +1,5 @@
 /**
- * GreenCharge — Operator API Client (P4)
+ * Aegis — Operator API Client (P4)
  *
  * Thin typed wrapper over /api/stations, /api/chargers, /api/network/*.
  * Uses shared types from frontend/src/types/api.ts only (rules.md SS12).
@@ -17,6 +17,7 @@ import type {
   NetworkImpactResponse,
   ErrorResponse,
 } from "../types/api";
+import { apiFetch, readApiError } from "./http";
 
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -41,7 +42,7 @@ async function handle<T>(res: Response): Promise<T> {
 }
 
 export async function getStations(): Promise<StationsResponse> {
-  const res = await fetch("/api/stations");
+  const res = await apiFetch("/api/stations");
   return handle<StationsResponse>(res);
 }
 
@@ -49,16 +50,16 @@ export async function getChargers(stationId?: string): Promise<ChargersResponse>
   const url = stationId
     ? `/api/chargers?station_id=${encodeURIComponent(stationId)}`
     : "/api/chargers";
-  const res = await fetch(url);
+  const res = await apiFetch(url);
   return handle<ChargersResponse>(res);
 }
 
 export async function getNetworkStatus(): Promise<NetworkStatusResponse> {
-  const res = await fetch("/api/network/status");
+  const res = await apiFetch("/api/network/status");
   return handle<NetworkStatusResponse>(res);
 }
 
 export async function getNetworkImpact(): Promise<NetworkImpactResponse> {
-  const res = await fetch("/api/network/impact");
+  const res = await apiFetch("/api/network/impact");
   return handle<NetworkImpactResponse>(res);
 }

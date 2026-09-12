@@ -1,8 +1,7 @@
-"""GreenCharge driver API schemas (P3).
+"""Aegis driver API schemas (P3).
 
-Shapes follow the locked Driver section of the project API contract.  Green
-Score is optional at this phase because its authoritative engine is a later
-P2 phase; the field becomes populated once that engine is available.
+Shapes follow the Driver section of the project API contract. Green Score is
+computed by the backend's deterministic environmental accounting layer.
 """
 
 from datetime import datetime

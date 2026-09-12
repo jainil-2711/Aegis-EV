@@ -1,10 +1,12 @@
-"""GreenCharge Optimization API (P2)."""
+"""Aegis Optimization API (P2)."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.auth import Principal, ROLE_NETWORK, require_role
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -91,6 +93,7 @@ def run_optimization(
     payload: OptimizationRunRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    _: Principal = Depends(require_role(ROLE_NETWORK)),
 ) -> OptimizationRunResponse:
     try:
         computation = OptimizationService(db, settings).run(
@@ -102,10 +105,15 @@ def run_optimization(
 
     run = OptimizationRun(
         mode=payload.mode.value,
+        scenario=(payload.scenario or Scenario.normal).value,
         baseline_peak_kw=computation.baseline.peak_kw,
         optimized_peak_kw=computation.candidate.peak_kw,
         baseline_cost=computation.baseline.cost,
         optimized_cost=computation.candidate.cost,
+        baseline_renewable_share_pct=computation.baseline.renewable_share_pct,
+        optimized_renewable_share_pct=computation.candidate.renewable_share_pct,
+        baseline_co2_kg=computation.baseline.co2_kg,
+        optimized_co2_kg=computation.candidate.co2_kg,
         status=OptimizationStatus.candidate.value,
     )
     db.add(run)
@@ -166,6 +174,7 @@ def run_optimization(
 def apply_optimization(
     payload: OptimizationApplyRequest,
     db: Session = Depends(get_db),
+    _: Principal = Depends(require_role(ROLE_NETWORK)),
 ) -> OptimizationApplyResponse:
     candidate = db.get(OptimizationRun, payload.optimization_run_id)
     if candidate is None:
@@ -199,7 +208,7 @@ def apply_optimization(
 
 
 @router.get("/schedule", response_model=OptimizationScheduleResponse)
-def get_active_schedule(db: Session = Depends(get_db)) -> OptimizationScheduleResponse:
+def get_active_schedule(db: Session = Depends(get_db), _: Principal = Depends(require_role(ROLE_NETWORK))) -> OptimizationScheduleResponse:
     active = db.execute(
         select(OptimizationRun)
         .where(OptimizationRun.status == OptimizationStatus.applied.value)
@@ -227,6 +236,7 @@ def get_optimization_run(
     optimization_id: str,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    _: Principal = Depends(require_role(ROLE_NETWORK)),
 ) -> OptimizationRunDetailResponse:
     run = db.get(OptimizationRun, optimization_id)
     if run is None:

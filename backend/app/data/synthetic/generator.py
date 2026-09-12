@@ -1,5 +1,5 @@
 """
-GreenCharge — Synthetic Data Generator (P1)
+Aegis — Synthetic Data Generator (P1)
 
 Produces a deterministic demo dataset per data-spec.md SS16:
     40 EVs, 5-8 stations, 20-30 chargers, 24h horizon, 30-min slots.
@@ -95,7 +95,7 @@ def generate_stations(rng: random.Random, settings: Settings) -> list[dict]:
         stations.append(
             {
                 "id": f"STN-{i + 1:02d}",
-                "name": f"GreenCharge Station {i + 1}",
+                "name": f"Aegis Station {i + 1}",
                 # capacity assigned after chargers are known; placeholder here
                 "capacity_kw": 0.0,
                 "charger_count": 0,

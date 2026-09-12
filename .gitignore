@@ -1,16 +1,3 @@
-# Node
-node_modules/
-frontend/node_modules/
-
-# Build output
-dist/
-frontend/dist/
-
-# Environment
-.env
-.env.*
-!.env.example
-
 # Python
 __pycache__/
 *.py[cod]
@@ -18,8 +5,15 @@ __pycache__/
 .venv/
 venv/
 
-# SQLite / local runtime
+# Local databases
 *.db
+
+# Environment files
+.env
+
+# Node
+node_modules/
+dist/
 
 # IDE
 .vscode/

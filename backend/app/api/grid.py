@@ -1,5 +1,5 @@
 """
-GreenCharge — Grid API (P1) — api-contract.md SS3
+Aegis — Grid API (P1) — api-contract.md SS3
 
 Routes:
     GET  /api/grid/status
@@ -12,6 +12,7 @@ Routes:
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.auth import Principal, ROLE_GRID, ROLE_NETWORK, require_role
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.schemas.grid import (
@@ -33,13 +34,14 @@ router = APIRouter(prefix="/api/grid", tags=["grid"])
 
 @router.get("/status", response_model=GridStatusResponse)
 def get_grid_status(
-    db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
+    db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+    _: Principal = Depends(require_role(ROLE_GRID, ROLE_NETWORK)),
 ) -> GridStatusResponse:
     return build_grid_status(db, settings)
 
 
 @router.get("/forecast", response_model=GridForecastResponse)
-def get_grid_forecast(db: Session = Depends(get_db)) -> GridForecastResponse:
+def get_grid_forecast(db: Session = Depends(get_db), _: Principal = Depends(require_role(ROLE_GRID, ROLE_NETWORK))) -> GridForecastResponse:
     slots = list_forecast_slots(db)
     return GridForecastResponse(
         slots=[EnergySlotSchema.model_validate(s) for s in slots]
@@ -48,21 +50,23 @@ def get_grid_forecast(db: Session = Depends(get_db)) -> GridForecastResponse:
 
 @router.post("/signals", response_model=GridSignal, status_code=201)
 def post_grid_signal(
-    payload: GridSignalCreate, db: Session = Depends(get_db)
+    payload: GridSignalCreate, db: Session = Depends(get_db),
+    _: Principal = Depends(require_role(ROLE_GRID)),
 ) -> GridSignal:
     signal = create_signal(db, payload)
     return GridSignal.model_validate(signal)
 
 
 @router.get("/signals", response_model=GridSignalsResponse)
-def get_grid_signals(db: Session = Depends(get_db)) -> GridSignalsResponse:
+def get_grid_signals(db: Session = Depends(get_db), _: Principal = Depends(require_role(ROLE_GRID, ROLE_NETWORK))) -> GridSignalsResponse:
     signals = list_signals(db)
     return GridSignalsResponse(signals=[GridSignal.model_validate(s) for s in signals])
 
 
 @router.get("/ev-load", response_model=GridEVLoadResponse)
 def get_grid_ev_load(
-    db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
+    db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+    _: Principal = Depends(require_role(ROLE_GRID, ROLE_NETWORK)),
 ) -> GridEVLoadResponse:
     result = get_ev_load(db, settings)
     return GridEVLoadResponse(

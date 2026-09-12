@@ -1,4 +1,4 @@
-"""GreenCharge charging-network operator API schemas (P4)."""
+"""Aegis charging-network operator API schemas (P4)."""
 
 from pydantic import BaseModel
 

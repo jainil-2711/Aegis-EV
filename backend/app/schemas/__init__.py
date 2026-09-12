@@ -1,5 +1,5 @@
 """
-GreenCharge — Pydantic schemas (SHARED, frozen contract)
+Aegis — Pydantic schemas (SHARED, frozen contract)
 
 Split by domain, mirroring backend/app/schemas/*.py in architecture.md SS4:
     enums.py, shared.py, health.py   -> shared, everyone reads

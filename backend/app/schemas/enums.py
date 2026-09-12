@@ -1,5 +1,5 @@
 """
-GreenCharge — Shared Enums (SHARED, frozen contract)
+Aegis — Shared Enums (SHARED, frozen contract)
 
 Copied verbatim from the project's schemas.py. Do not add/rename/remove
 values without updating schemas.py, api.ts, api-contract.md, and

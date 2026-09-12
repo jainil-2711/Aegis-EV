@@ -1,5 +1,5 @@
 """
-GreenCharge — Operator: Stations Service (P4)
+Aegis — Operator: Stations Service (P4)
 
 Owns:
     GET /api/stations

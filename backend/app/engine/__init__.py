@@ -1,1 +1,1 @@
-"""Deterministic business engines owned by P2."""
+"""Deterministic business engines for Aegis."""

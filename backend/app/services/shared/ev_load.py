@@ -1,5 +1,5 @@
 """
-GreenCharge — Shared EV Load Module (architecture.md SS4)
+Aegis — Shared EV Load Module (architecture.md SS4)
 
 SINGLE SOURCE OF TRUTH for:
     current_ev_load_kw
@@ -114,7 +114,8 @@ def _naive_fallback(db: Session, now: datetime, settings: Settings) -> EVLoadRes
             if ev.arrival_time <= ts <= ev.departure_time and ev.current_soc < ev.target_soc:
                 charger = chargers.get(ev.charger_id)
                 charger_power = charger.max_power_kw if charger else ev.max_charge_kw
-                total += min(ev.max_charge_kw, charger_power)
+                effective_power_kw = max(0.0, min(ev.max_charge_kw, charger_power))
+                total += effective_power_kw
         return total
 
     current_ts = current_demo_timestamp(settings, now)

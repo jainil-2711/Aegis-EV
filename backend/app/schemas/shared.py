@@ -1,5 +1,5 @@
 """
-GreenCharge — Shared value-object schemas (SHARED, frozen contract)
+Aegis — Shared value-object schemas (SHARED, frozen contract)
 
 Mirrors api.ts field-for-field (rules.md SS12).
 """

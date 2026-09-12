@@ -1,5 +1,5 @@
 """
-GreenCharge — Grid signal service (P1)
+Aegis — Grid signal service (P1)
 
 A GridSignal is a quantitative, advisory system-level signal
 (PRD.md SS7, architecture.md SS9). It is normally an optimization

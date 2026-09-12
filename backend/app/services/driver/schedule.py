@@ -6,6 +6,7 @@ import uuid
 from app.models.charging_session import ChargingSession
 from app.models.ev import EV
 from app.models.optimization_run import OptimizationRun
+from app.services.optimization.optimizer import get_active_run
 from app.schemas.driver import (
     ScheduleAcceptRequest,
     ScheduleAcceptResponse,
@@ -60,6 +61,9 @@ def override_schedule(db: Session, ev_id: str, req: ScheduleOverrideRequest) -> 
 
     feasible, explanation, alternatives = _check_feasibility(ev, req)
     session = _get_or_create_session(db, ev)
+    active_run = get_active_run(db)
+    if active_run is not None:
+        session.optimization_run_id = active_run.id
     session.overridden = True
     session.accepted = False
     if feasible:

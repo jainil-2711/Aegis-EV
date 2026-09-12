@@ -1,5 +1,5 @@
 """
-GreenCharge — Database wiring (SHARED)
+Aegis — Database wiring (SHARED)
 
 One engine, one session factory, one declarative Base, used by every
 module's models/ and services/. Do not create a second engine elsewhere

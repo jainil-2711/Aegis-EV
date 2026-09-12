@@ -1,3 +1,24 @@
+
+export type AuthRole = "grid_operator" | "network_operator" | "ev_driver";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  display_name: string;
+  role: AuthRole;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user: AuthUser;
+}
 export type DriverPreference = "cheapest" | "greenest" | "balanced" | "immediate";
 export type Flexibility = "high" | "medium" | "low" | "non_flexible";
 export type SessionStatus = "pending" | "scheduled" | "charging" | "completed" | "cancelled";
@@ -236,4 +257,11 @@ export interface OptimizationApplyResponse {
   status: OptimizationStatus;
   applied_at: string;
   superseded_run_id?: string | null;
+}
+
+
+export interface OptimizationScheduleResponse {
+  optimization_run_id: string;
+  status: OptimizationStatus;
+  entries: ChargingScheduleEntry[];
 }

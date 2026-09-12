@@ -1,5 +1,5 @@
 """
-GreenCharge — Optimization API schemas (P2).
+Aegis — Optimization API schemas (P2).
 
 These shapes mirror the frozen optimization section of the shared API contract
 and the canonical schemas.py supplied with the hackathon package.

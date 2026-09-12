@@ -1,5 +1,5 @@
 """
-GreenCharge — Grid status/forecast service (P1)
+Aegis — Grid status/forecast service (P1)
 
 Combines the current EnergySlot with the shared EV load figures
 (services/shared/ev_load.py) into the GridStatusResponse shape. Does not

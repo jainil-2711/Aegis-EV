@@ -1,4 +1,4 @@
-"""GreenCharge optimization services (P2)."""
+"""Aegis optimization services (P2)."""
 
 from app.services.optimization.optimizer import (
     OptimizationError,

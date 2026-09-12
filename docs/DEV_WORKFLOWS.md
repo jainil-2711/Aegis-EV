@@ -1,4 +1,4 @@
-# GreenCharge — Unified Developer Workflow (P1–P4)
+# Aegis — Unified Developer Workflow (P1–P4)
 
 > **Purpose:** This is the single coordination file all four AI coding sessions
 > read before doing any work. It turns `phases.md` + `architecture.md` +
@@ -485,3 +485,15 @@ Integration rule:
 - Test fixtures must seed their own required data; the running demo application must be seeded explicitly with `python scripts\seed_demo.py` from the repository root (or `python ..\scripts\seed_demo.py` from `backend/`).
 - The Driver simulated-live flow must clearly distinguish `scheduled` (waiting for window), `charging` (window active), and `completed` (window finished). Use the shared simulation clock; do not use independent wall-clock calculations.
 - Before commit, verify the Operator → optimization → apply → Driver → accept/override flow and confirm the status transitions are observable.
+
+
+## Aegis consolidated integration additions — 2026-09-12
+
+- Authentication is now required before any role dashboard is reachable.
+- Roles are enforced server-side: `grid_operator`, `network_operator`, `ev_driver`.
+- Only the Grid Operator may publish GridSignals; only the Network Operator may run/apply optimization; only the EV Driver may mutate driver preferences or accept/override.
+- Optimization run records persist a complete baseline/optimized metric snapshot so historical before/after values cannot drift when later signals are published.
+- Operator network charts reconstruct EV load from the active schedule at 30-minute timestamps.
+- Green Score is deterministic, informational and non-punitive.
+- Aegis Intelligence is an auditable signal-fusion/decision-trace UI; it is not used to make numerical charging decisions.
+- Demo reset clears sessions, schedule entries, optimization runs and grid signals before re-seeding deterministic data.

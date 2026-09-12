@@ -5,6 +5,7 @@ import type {
   GridSignalsResponse,
   GridStatusResponse,
 } from "../types/api";
+import { apiFetch, readApiError } from "./http";
 
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -21,20 +22,20 @@ async function handle<T>(res: Response): Promise<T> {
 }
 
 export async function getGridStatus(): Promise<GridStatusResponse> {
-  return handle(await fetch("/api/grid/status"));
+  return handle(await apiFetch("/api/grid/status"));
 }
 
 export async function getGridForecast(): Promise<GridForecastResponse> {
-  return handle(await fetch("/api/grid/forecast"));
+  return handle(await apiFetch("/api/grid/forecast"));
 }
 
 export async function getGridSignals(): Promise<GridSignalsResponse> {
-  return handle(await fetch("/api/grid/signals"));
+  return handle(await apiFetch("/api/grid/signals"));
 }
 
 export async function createGridSignal(payload: GridSignalCreate): Promise<GridSignal> {
   return handle(
-    await fetch("/api/grid/signals", {
+    await apiFetch("/api/grid/signals", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
