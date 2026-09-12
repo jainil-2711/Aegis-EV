@@ -1,11 +1,8 @@
-"""EnergySlot model — data-spec.md SS7. Written by P1's synthetic generator.
-
-One row per 30-minute slot across the 24h demo horizon (48 rows/day).
-"""
+"""EnergySlot model — normalized grid/renewable data for one 30-minute slot."""
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float
+from sqlalchemy import DateTime, Float, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -15,8 +12,24 @@ class EnergySlot(Base):
     __tablename__ = "energy_slots"
 
     timestamp: Mapped[datetime] = mapped_column(DateTime, primary_key=True)
+
+    # Grid inputs
     base_load_kw: Mapped[float] = mapped_column(Float)
-    renewable_kw: Mapped[float] = mapped_column(Float)
     grid_capacity_kw: Mapped[float] = mapped_column(Float)
+
+    # Renewable generation — Aegis-derived values
+    solar_generation_kw: Mapped[float] = mapped_column(Float)
+    wind_generation_kw: Mapped[float] = mapped_column(Float)
+
+    # Canonical renewable total:
+    # renewable_kw = solar_generation_kw + wind_generation_kw
+    renewable_kw: Mapped[float] = mapped_column(Float)
+
+    # Energy/economic context
     electricity_price: Mapped[float] = mapped_column(Float)
     carbon_intensity: Mapped[float] = mapped_column(Float)
+
+    # Data provenance
+    source_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    forecast_for: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

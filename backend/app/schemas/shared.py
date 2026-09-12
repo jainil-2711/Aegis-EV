@@ -33,10 +33,18 @@ class EVLoad(BaseModel):
 class EnergySlot(BaseModel):
     timestamp: datetime
     base_load_kw: float
-    renewable_kw: float
     grid_capacity_kw: float
+
+    solar_generation_kw: float
+    wind_generation_kw: float
+    renewable_kw: float
+
     electricity_price: float
     carbon_intensity: float
+
+    source_type: str | None = None
+    observed_at: datetime | None = None
+    forecast_for: datetime | None = None
 
     model_config = {"from_attributes": True}
 
