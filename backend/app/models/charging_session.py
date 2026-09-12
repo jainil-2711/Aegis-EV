@@ -1,0 +1,27 @@
+"""
+ChargingSession model — data-spec.md SS9.
+
+Owned by P3 (driver accept/override writes it). Declared here as part of
+the shared model foundation.
+"""
+
+from typing import Optional
+
+from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.database import Base
+
+
+class ChargingSession(Base):
+    __tablename__ = "charging_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    ev_id: Mapped[str] = mapped_column(ForeignKey("evs.id"))
+    charger_id: Mapped[str] = mapped_column(ForeignKey("chargers.id"))
+    optimization_run_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("optimization_runs.id"), nullable=True
+    )
+    accepted: Mapped[bool] = mapped_column(Boolean, default=False)
+    overridden: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String, default="pending")  # SessionStatus
