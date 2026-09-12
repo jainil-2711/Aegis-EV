@@ -403,3 +403,309 @@ def test_scenario_modifiers_change_one_base_dataset(settings):
     assert high_demand.electricity_price > base[0].electricity_price
     assert high_renewable.renewable_kw > base[0].renewable_kw
     assert low_renewable.renewable_kw < base[0].renewable_kw
+
+
+# ---------------------------------------------------------------------------
+# P2 additions — hard-constraint and exact-numerical-formula regression tests
+# ---------------------------------------------------------------------------
+
+"""P2 additions — hard-constraint and exact-numerical-formula regression tests.
+
+These are written to be appended to backend/app/tests/test_optimization.py.
+They exercise OptimizationService directly against a plain db_session, since
+they check optimizer-internal physical-limit and formula behaviour rather
+than the API translation layer.
+"""
+
+
+def test_charger_power_limit_is_a_hard_constraint(db_session, settings):
+    """No slot may schedule power above the charger's max_power_kw.
+
+    The EV's own max_charge_kw is set far above the charger limit, and the
+    charging window gives exactly enough time to finish at the charger's
+    (lower) cap. If the charger cap were not enforced, the optimizer could
+    finish faster by exceeding it.
+    """
+    from datetime import datetime
+    import pytest
+    from app.models.charger import Charger
+    from app.models.ev import EV
+    from app.models.energy_slot import EnergySlot
+    from app.models.station import Station
+    from app.schemas.enums import OperatorObjective
+    from app.services.optimization.optimizer import OptimizationService
+
+    station = Station(id="ST-CAP", name="Charger Cap Station", capacity_kw=100.0, charger_count=1)
+    charger = Charger(id="CH-CAP", station_id=station.id, max_power_kw=2.0, connector_type="ccs", status="available")
+    ev = EV(
+        id="EV-CAP",
+        battery_capacity_kwh=10.0,
+        current_soc=0.0,
+        target_soc=100.0,  # needs 10 kWh
+        arrival_time=datetime(2026, 9, 12, 12, 0),
+        departure_time=datetime(2026, 9, 12, 22, 0),  # 10h window == 10kWh / 1kW*... exactly enough at 2kW for 5h
+        max_charge_kw=50.0,  # far above the charger cap
+        efficiency=1.0,
+        preference="immediate",
+        charger_id=charger.id,
+        flexibility="low",
+        profile="test",
+        data_source="synthetic",
+    )
+    from datetime import timedelta
+    slots = [
+        EnergySlot(
+            timestamp=datetime(2026, 9, 12, 12, 0) + timedelta(minutes=30 * i),
+            base_load_kw=0.0,
+            renewable_kw=0.0,
+            grid_capacity_kw=1000.0,
+            electricity_price=7.0,
+            carbon_intensity=0.5,
+        )
+        for i in range(20)  # 10 hours of 30-minute slots
+    ]
+    db_session.add_all([station, charger, ev, *slots])
+    db_session.commit()
+
+    result = OptimizationService(db_session, settings).run(OperatorObjective.cheapest)
+    for point in result.candidate_schedule:
+        assert point.charging_power_kw <= charger.max_power_kw + 1e-9
+
+    total_energy = sum(p.energy_kwh for p in result.candidate_schedule)
+    assert total_energy == pytest.approx(10.0, abs=0.05)
+
+
+def test_station_capacity_limit_is_a_hard_constraint(db_session, settings):
+    """Aggregate power across chargers on one station must respect station capacity."""
+    from datetime import datetime
+    from app.models.charger import Charger
+    from app.models.ev import EV
+    from app.models.energy_slot import EnergySlot
+    from app.models.station import Station
+    from app.schemas.enums import OperatorObjective
+    from app.services.optimization.optimizer import OptimizationService
+
+    station = Station(id="ST-SHARE", name="Shared Station", capacity_kw=3.0, charger_count=2)
+    charger_a = Charger(id="CH-A", station_id=station.id, max_power_kw=5.0, connector_type="ccs", status="available")
+    charger_b = Charger(id="CH-B", station_id=station.id, max_power_kw=5.0, connector_type="ccs", status="available")
+
+    from datetime import timedelta
+
+    # Combined energy needed (10 kWh) only fits within the station's 3 kW cap
+    # over a 4-hour window (3 kW x 4h = 12 kWh >= 10 kWh); a 1-hour window would
+    # make the scenario physically infeasible rather than exercising the cap.
+    common_window = dict(
+        arrival_time=datetime(2026, 9, 12, 12, 0),
+        departure_time=datetime(2026, 9, 12, 16, 0),
+        efficiency=1.0,
+        preference="immediate",
+        flexibility="low",
+        profile="test",
+        data_source="synthetic",
+    )
+    ev_a = EV(id="EV-A", battery_capacity_kwh=5.0, current_soc=0.0, target_soc=100.0,
+              max_charge_kw=5.0, charger_id=charger_a.id, **common_window)
+    ev_b = EV(id="EV-B", battery_capacity_kwh=5.0, current_soc=0.0, target_soc=100.0,
+              max_charge_kw=5.0, charger_id=charger_b.id, **common_window)
+
+    slots = [
+        EnergySlot(
+            timestamp=datetime(2026, 9, 12, 12, 0) + timedelta(minutes=30 * i),
+            base_load_kw=0.0, renewable_kw=0.0, grid_capacity_kw=100.0,
+            electricity_price=7.0, carbon_intensity=0.5,
+        )
+        for i in range(8)  # 4 hours of 30-minute slots
+    ]
+    db_session.add_all([station, charger_a, charger_b, ev_a, ev_b, *slots])
+    db_session.commit()
+
+    result = OptimizationService(db_session, settings).run(OperatorObjective.balanced)
+    by_ts = {}
+    for point in result.candidate_schedule:
+        by_ts[point.timestamp] = by_ts.get(point.timestamp, 0.0) + point.charging_power_kw
+    for total_power in by_ts.values():
+        assert total_power <= station.capacity_kw + 1e-9
+
+
+def test_grid_capacity_headroom_is_a_hard_constraint(db_session, settings):
+    """Total EV load in a slot may never push demand above grid_capacity_kw."""
+    from datetime import datetime
+    from app.models.charger import Charger
+    from app.models.ev import EV
+    from app.models.energy_slot import EnergySlot
+    from app.models.station import Station
+    from app.schemas.enums import OperatorObjective
+    from app.services.optimization.optimizer import OptimizationService
+
+    station = Station(id="ST-GRID", name="Grid Cap Station", capacity_kw=100.0, charger_count=1)
+    charger = Charger(id="CH-GRID", station_id=station.id, max_power_kw=20.0, connector_type="ccs", status="available")
+    ev = EV(
+        id="EV-GRID",
+        battery_capacity_kwh=20.0,
+        current_soc=0.0,
+        target_soc=100.0,
+        arrival_time=datetime(2026, 9, 12, 12, 0),
+        departure_time=datetime(2026, 9, 12, 14, 0),
+        max_charge_kw=20.0,
+        efficiency=1.0,
+        preference="immediate",
+        charger_id=charger.id,
+        flexibility="high",
+        profile="test",
+        data_source="synthetic",
+    )
+    # Tight slot: base_load leaves only 1 kW of headroom. Later slots are wide open.
+    slots = [
+        EnergySlot(timestamp=datetime(2026, 9, 12, 12, 0), base_load_kw=99.0, renewable_kw=0.0,
+                    grid_capacity_kw=100.0, electricity_price=5.0, carbon_intensity=0.5),
+        EnergySlot(timestamp=datetime(2026, 9, 12, 12, 30), base_load_kw=0.0, renewable_kw=0.0,
+                    grid_capacity_kw=100.0, electricity_price=5.0, carbon_intensity=0.5),
+        EnergySlot(timestamp=datetime(2026, 9, 12, 13, 0), base_load_kw=0.0, renewable_kw=0.0,
+                    grid_capacity_kw=100.0, electricity_price=5.0, carbon_intensity=0.5),
+        EnergySlot(timestamp=datetime(2026, 9, 12, 13, 30), base_load_kw=0.0, renewable_kw=0.0,
+                    grid_capacity_kw=100.0, electricity_price=5.0, carbon_intensity=0.5),
+    ]
+    db_session.add_all([station, charger, ev, *slots])
+    db_session.commit()
+
+    result = OptimizationService(db_session, settings).run(OperatorObjective.cheapest)
+    by_ts = {p.timestamp: p for p in result.candidate_schedule}
+    tight_slot_power = by_ts.get(datetime(2026, 9, 12, 12, 0))
+    if tight_slot_power is not None:
+        assert tight_slot_power.charging_power_kw <= 1.0 + 1e-9
+
+
+def test_insufficient_capacity_is_reported_as_infeasible(db_session, settings):
+    """Physically-impossible demand must raise OptimizationError, not silently overcharge."""
+    from datetime import datetime
+    import pytest
+    from app.models.charger import Charger
+    from app.models.ev import EV
+    from app.models.energy_slot import EnergySlot
+    from app.models.station import Station
+    from app.schemas.enums import OperatorObjective
+    from app.services.optimization.optimizer import OptimizationError, OptimizationService
+
+    station = Station(id="ST-INFEASIBLE", name="Infeasible Station", capacity_kw=100.0, charger_count=1)
+    charger = Charger(id="CH-INFEASIBLE", station_id=station.id, max_power_kw=2.0, connector_type="ccs", status="available")
+    ev = EV(
+        id="EV-INFEASIBLE",
+        battery_capacity_kwh=100.0,
+        current_soc=0.0,
+        target_soc=100.0,  # needs 100 kWh
+        arrival_time=datetime(2026, 9, 12, 12, 0),
+        departure_time=datetime(2026, 9, 12, 12, 30),  # only 30 minutes at 2kW = 1kWh possible
+        max_charge_kw=2.0,
+        efficiency=1.0,
+        preference="immediate",
+        charger_id=charger.id,
+        flexibility="low",
+        profile="test",
+        data_source="synthetic",
+    )
+    slot = EnergySlot(
+        timestamp=datetime(2026, 9, 12, 12, 0),
+        base_load_kw=0.0, renewable_kw=0.0, grid_capacity_kw=100.0,
+        electricity_price=7.0, carbon_intensity=0.5,
+    )
+    db_session.add_all([station, charger, ev, slot])
+    db_session.commit()
+
+    with pytest.raises(OptimizationError):
+        OptimizationService(db_session, settings).run(OperatorObjective.cheapest)
+
+
+def test_schedule_entry_formulas_match_documented_relationships(db_session, settings):
+    """Exercise every documented per-entry formula against exact expected numbers.
+
+    Single EV, single slot, sized so the required energy exactly matches
+    max charger power for the whole slot, removing any solver ambiguity.
+    """
+    from datetime import datetime
+    import pytest
+    from app.models.charger import Charger
+    from app.models.ev import EV
+    from app.models.energy_slot import EnergySlot
+    from app.models.station import Station
+    from app.schemas.enums import OperatorObjective
+    from app.services.optimization.optimizer import OptimizationService
+
+    station = Station(id="ST-FORMULA", name="Formula Station", capacity_kw=20.0, charger_count=1)
+    charger = Charger(id="CH-FORMULA", station_id=station.id, max_power_kw=10.0, connector_type="ccs", status="available")
+    ev = EV(
+        id="EV-FORMULA",
+        battery_capacity_kwh=5.0,
+        current_soc=0.0,
+        target_soc=100.0,  # needs exactly 5 kWh
+        arrival_time=datetime(2026, 9, 12, 12, 0),
+        departure_time=datetime(2026, 9, 12, 12, 30),  # exactly one 30-minute slot
+        max_charge_kw=10.0,
+        efficiency=1.0,
+        preference="cheapest",
+        charger_id=charger.id,
+        flexibility="low",
+        profile="test",
+        data_source="synthetic",
+    )
+    slot = EnergySlot(
+        timestamp=datetime(2026, 9, 12, 12, 0),
+        base_load_kw=0.0,
+        renewable_kw=4.0,  # renewable_available = 4 * 0.5h = 2 kWh
+        grid_capacity_kw=20.0,
+        electricity_price=6.0,
+        carbon_intensity=0.5,
+    )
+    db_session.add_all([station, charger, ev, slot])
+    db_session.commit()
+
+    result = OptimizationService(db_session, settings).run(OperatorObjective.cheapest)
+    assert len(result.candidate_schedule) == 1
+    entry = result.candidate_schedule[0]
+
+    # power is forced to the charger max since that's the only way to satisfy
+    # the required-energy constraint within a single 30-minute slot.
+    assert entry.charging_power_kw == pytest.approx(10.0)
+    # energy_kwh = power_kw * 0.5h  (§6.8)
+    assert entry.energy_kwh == pytest.approx(5.0)
+    # renewable_energy_kwh = min(total_charging_energy_kwh, renewable_available_kwh)  (§6.10)
+    assert entry.renewable_energy_kwh == pytest.approx(2.0)
+    # grid_energy_kwh = total - renewable  (§6.11)
+    assert entry.grid_energy_kwh == pytest.approx(3.0)
+    # cost = energy_kwh * tariff  (§6.13)
+    assert entry.cost == pytest.approx(5.0 * 6.0)
+    # co2_kg = grid_energy_kwh * carbon_intensity  (§6.14)
+    assert entry.co2_kg == pytest.approx(3.0 * 0.5)
+
+    metrics = OptimizationService(db_session, settings)._metrics(result.candidate_schedule, [])
+    # renewable_share_percent = renewable_energy_kwh / total_charging_energy_kwh * 100  (§6.12)
+    assert metrics.renewable_share_pct == pytest.approx(40.0)
+    assert 0.0 <= metrics.renewable_share_pct <= 100.0
+
+
+def test_green_score_boundary_cases_are_deterministic_and_bounded():
+    from app.engine.green_score import calculate_green_score
+
+    best = calculate_green_score(
+        renewable_share_pct=100.0,
+        average_carbon_intensity=0.0,
+        grid_energy_kwh=0.0,
+        total_energy_kwh=100.0,
+    )
+    assert best == 100.0
+
+    worst = calculate_green_score(
+        renewable_share_pct=0.0,
+        average_carbon_intensity=1.0,
+        grid_energy_kwh=100.0,
+        total_energy_kwh=100.0,
+    )
+    assert worst == 0.0
+
+    # Every score in between must remain within the informational 0-100 bound.
+    mid = calculate_green_score(
+        renewable_share_pct=55.0,
+        average_carbon_intensity=0.4,
+        grid_energy_kwh=45.0,
+        total_energy_kwh=100.0,
+    )
+    assert 0.0 <= mid <= 100.0
