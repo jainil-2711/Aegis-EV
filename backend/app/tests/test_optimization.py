@@ -11,7 +11,14 @@ from app.data.synthetic.generator import generate_full_dataset
 from app.database import Base, get_db
 from app.main import app
 from app.schemas.enums import OperatorObjective
+from app.models.charger import Charger
+from app.models.energy_slot import EnergySlot
+from app.models.ev import EV
+from app.models.grid_signal import GridSignal
+from app.models.station import Station
 from app.services.optimization.optimizer import OptimizationError, OptimizationService
+from app.engine.carbon import co2_kg_from_grid, reduction_pct, renewable_share_pct
+from app.engine.green_score import calculate_green_score
 
 ORTOOLS_AVAILABLE = importlib.util.find_spec("ortools") is not None
 
@@ -144,6 +151,117 @@ def test_second_apply_supersedes_previous_candidate(optimizer_client):
     first_detail = optimizer_client.get(f"/api/optimization/{first}")
     assert first_detail.status_code == 200
     assert first_detail.json()["status"] == "superseded"
+
+
+@pytest.mark.skipif(not ORTOOLS_AVAILABLE, reason="OR-Tools not installed in the test environment")
+def test_grid_signal_changes_candidate_schedule_when_soft_guidance_is_material(optimizer_client, settings):
+    """A published GridSignal must materially influence the candidate schedule.
+
+    This uses a tiny deterministic network: the first slot is cheaper, while a
+    zero-load LTE signal covers only that slot. The signal remains soft, but its
+    penalty is intentionally large enough to outweigh the price advantage and
+    shift the flexible EV into the later slot.
+    """
+    from app import models  # noqa: F401
+    # Reuse the TestClient application's in-memory DB through its dependency
+    # override by getting the overridden session factory from a request path is
+    # awkward, so build the scenario via the same isolated database used by the
+    # fixture and replace the fixture's large generated dataset with a minimal
+    # one through direct SQL deletes/inserts.
+    from app.database import get_db
+    from sqlalchemy import delete
+
+    # Recover the fixture's active session factory from the dependency override.
+    db_dependency = app.dependency_overrides[get_db]
+    db = next(db_dependency())
+    try:
+        for model in (GridSignal, EV, Charger, Station, EnergySlot):
+            db.execute(delete(model))
+        db.commit()
+
+        station = Station(id="ST-TEST", name="Test Station", capacity_kw=10.0, charger_count=1)
+        charger = Charger(
+            id="CH-TEST",
+            station_id=station.id,
+            max_power_kw=10.0,
+            connector_type="ccs",
+            status="available",
+        )
+        ev = EV(
+            id="EV-TEST",
+            battery_capacity_kwh=10.0,
+            current_soc=0.0,
+            target_soc=50.0,
+            arrival_time=datetime(2026, 9, 12, 12, 0),
+            departure_time=datetime(2026, 9, 12, 13, 0),
+            max_charge_kw=10.0,
+            efficiency=1.0,
+            preference="cheapest",
+            charger_id=charger.id,
+            flexibility="high",
+            profile="test",
+            data_source="synthetic",
+        )
+        slots = [
+            EnergySlot(
+                timestamp=datetime(2026, 9, 12, 12, 0),
+                base_load_kw=0.0,
+                renewable_kw=0.0,
+                grid_capacity_kw=10.0,
+                electricity_price=5.0,
+                carbon_intensity=0.75,
+            ),
+            EnergySlot(
+                timestamp=datetime(2026, 9, 12, 12, 30),
+                base_load_kw=0.0,
+                renewable_kw=0.0,
+                grid_capacity_kw=10.0,
+                electricity_price=10.0,
+                carbon_intensity=0.75,
+            ),
+        ]
+        db.add_all([station, charger, ev, *slots])
+        db.commit()
+
+        no_signal = OptimizationService(db, settings).run(OperatorObjective.cheapest)
+        no_signal_times = {point.timestamp for point in no_signal.candidate_schedule}
+        assert no_signal_times == {datetime(2026, 9, 12, 12, 0)}
+
+        db.add(
+            GridSignal(
+                start_time=datetime(2026, 9, 12, 12, 0),
+                end_time=datetime(2026, 9, 12, 12, 30),
+                condition="high_demand",
+                recommended_ev_load_kw=0.0,
+                signal_operator="lte",
+                renewable_availability="low",
+            )
+        )
+        db.commit()
+
+        signaled = OptimizationService(db, settings).run(OperatorObjective.cheapest)
+        signaled_times = {point.timestamp for point in signaled.candidate_schedule}
+        assert signaled_times == {datetime(2026, 9, 12, 12, 30)}
+    finally:
+        db.close()
+
+
+def test_environmental_accounting_formulas_are_consistent():
+    assert renewable_share_pct(60.0, 20.0) == pytest.approx(33.3333333333)
+    assert renewable_share_pct(60.0, 100.0) == 100.0
+    assert renewable_share_pct(0.0, 20.0) == 0.0
+
+    assert co2_kg_from_grid(40.0, 0.65) == pytest.approx(26.0)
+    assert reduction_pct(100.0, 70.0) == pytest.approx(30.0)
+    assert reduction_pct(0.0, 70.0) == 0.0
+
+    score = calculate_green_score(
+        renewable_share_pct=70.0,
+        average_carbon_intensity=0.65,
+        grid_energy_kwh=30.0,
+        total_energy_kwh=100.0,
+    )
+    assert 0.0 <= score <= 100.0
 
 
 @pytest.mark.skipif(ORTOOLS_AVAILABLE, reason="This test targets the documented missing-dependency guard")
