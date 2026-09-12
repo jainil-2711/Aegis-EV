@@ -17,6 +17,13 @@ from app.models.energy_slot import EnergySlot
 from app.models.ev import EV
 from app.models.station import Station
 
+# The autouse `auth_override` fixture in conftest.py replaces the real auth
+# dependency with a fixed Principal(user_id="TEST-USER", ...). P3's EV
+# ownership check requires an explicit owner_user_id, so the fixture below
+# binds that same id to the seeded demo EV to keep these tests behaving
+# exactly as before ownership enforcement was added.
+TEST_PRINCIPAL_USER_ID = "TEST-USER"
+
 
 @pytest.fixture()
 def client():
@@ -45,6 +52,12 @@ def client():
     db.bulk_insert_mappings(Charger, dataset.chargers)
     db.bulk_insert_mappings(EV, dataset.evs)
     db.bulk_insert_mappings(EnergySlot, dataset.energy_slots)
+    db.commit()
+
+    # Bind the demo test principal to EV-101 (P3 server-side ownership).
+    demo_ev = db.get(EV, "EV-101")
+    demo_ev.owner_user_id = TEST_PRINCIPAL_USER_ID
+    db.add(demo_ev)
     db.commit()
 
     def override_get_db():
@@ -250,3 +263,135 @@ def test_simulated_live_status_transitions_from_scheduled_to_charging_to_complet
     completed = client.get("/api/driver/session/status").json()
     assert completed["status"] == "completed"
     assert completed["current_soc"] > 0
+
+
+# ---------------------------------------------------------------------------
+# P3 Task 2 / Task 6 — server-side EV ownership authorization
+#
+# These tests bypass the conftest.py `auth_override` fixture (all-role test
+# principal) so they exercise the *real* signed-token auth dependency and
+# the real EV ownership check, matching how the frontend and a real driver
+# actually authenticate.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def real_auth_client():
+    """Same dataset as `client`, but with real login/token auth enabled."""
+    from app import models  # noqa: F401
+    from app.auth import ensure_demo_users, get_current_principal, issue_token
+
+    settings = Settings()
+    settings.seed = 42
+    settings.demo_day = "2026-09-12"
+    settings.num_evs = 40
+    settings.num_stations = 6
+    settings.num_chargers = 24
+    settings.slot_minutes = 30
+    settings.horizon_hours = 24
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    SessionLocal = sessionmaker(bind=engine)
+    db = SessionLocal()
+
+    dataset = generate_full_dataset(settings)
+    db.bulk_insert_mappings(Station, dataset.stations)
+    db.bulk_insert_mappings(Charger, dataset.chargers)
+    db.bulk_insert_mappings(EV, dataset.evs)
+    db.bulk_insert_mappings(EnergySlot, dataset.energy_slots)
+    db.commit()
+
+    # Creates demo users AND binds the demo driver -> EV-101 (see app.auth).
+    ensure_demo_users(db)
+
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    # This is the important difference from `client`: do NOT override
+    # get_current_principal, so real signed tokens and RBAC are exercised.
+    app.dependency_overrides.pop(get_current_principal, None)
+
+    from app.models.user import User
+
+    driver_user = db.query(User).filter(User.role == "ev_driver").first()
+    grid_user = db.query(User).filter(User.role == "grid_operator").first()
+    driver_token, _ = issue_token(driver_user)
+    grid_token, _ = issue_token(grid_user)
+
+    try:
+        with TestClient(app) as test_client:
+            yield test_client, db, driver_token, grid_token
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()
+
+
+def test_driver_can_access_own_ev(real_auth_client):
+    test_client, _db, driver_token, _grid_token = real_auth_client
+
+    res = test_client.get("/api/driver/session", headers={"Authorization": driver_token})
+    assert res.status_code == 200
+    assert res.json()["ev_id"] == "EV-101"
+
+    res_explicit = test_client.get(
+        "/api/driver/session", params={"ev_id": "EV-101"}, headers={"Authorization": driver_token}
+    )
+    assert res_explicit.status_code == 200
+    assert res_explicit.json()["ev_id"] == "EV-101"
+
+
+def test_driver_cannot_access_another_evs_data(real_auth_client):
+    test_client, _db, driver_token, _grid_token = real_auth_client
+
+    res = test_client.get(
+        "/api/driver/session", params={"ev_id": "EV-102"}, headers={"Authorization": driver_token}
+    )
+    assert res.status_code == 403
+    assert res.json()["detail"]["error"]["code"] == "EV_NOT_AUTHORIZED"
+
+
+def test_driver_endpoints_require_a_token(real_auth_client):
+    test_client, _db, _driver_token, _grid_token = real_auth_client
+
+    res = test_client.get("/api/driver/session")
+    assert res.status_code == 401
+
+
+def test_driver_endpoints_reject_wrong_role(real_auth_client):
+    test_client, _db, _driver_token, grid_token = real_auth_client
+
+    res = test_client.get("/api/driver/session", headers={"Authorization": grid_token})
+    assert res.status_code == 403
+
+
+def test_driver_cannot_accept_or_override_another_evs_schedule(real_auth_client):
+    pytest.importorskip("ortools", reason="OR-Tools required for optimizer integration tests")
+    test_client, _db, driver_token, _grid_token = real_auth_client
+
+    override_res = test_client.post(
+        "/api/driver/schedule/override",
+        params={"ev_id": "EV-102"},
+        json={"requested_power_kw": 7.0, "reason": "testing"},
+        headers={"Authorization": driver_token},
+    )
+    assert override_res.status_code == 403
+    assert override_res.json()["detail"]["error"]["code"] == "EV_NOT_AUTHORIZED"
+
+    accept_res = test_client.post(
+        "/api/driver/schedule/accept",
+        params={"ev_id": "EV-102"},
+        json={"optimization_run_id": "does-not-matter"},
+        headers={"Authorization": driver_token},
+    )
+    assert accept_res.status_code == 403
+    assert accept_res.json()["detail"]["error"]["code"] == "EV_NOT_AUTHORIZED"

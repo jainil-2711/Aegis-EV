@@ -98,6 +98,28 @@ def ensure_demo_users(db: Session) -> None:
             )
         )
     db.commit()
+    _bind_demo_driver_to_ev(db)
+
+
+def _bind_demo_driver_to_ev(db: Session) -> None:
+    """Bind the demo driver account to the canonical demo EV (P3).
+
+    This is the server-side ownership relationship that authorizes the demo
+    driver account for EV-101. It is idempotent and a no-op if the EV has
+    not been seeded yet or is already bound.
+    """
+    # Imported lazily to avoid a module-load cycle: app.services.driver.*
+    # imports app.auth for the Principal type used in authorization checks.
+    from app.models.ev import EV
+    from app.services.driver.session import DEMO_EV_ID
+
+    driver_user_id = next(item["id"] for item in DEMO_USERS if item["role"] == ROLE_DRIVER)
+    ev = db.get(EV, DEMO_EV_ID)
+    if ev is None or ev.owner_user_id is not None:
+        return
+    ev.owner_user_id = driver_user_id
+    db.add(ev)
+    db.commit()
 
 
 def authenticate_user(db: Session, email: str, password: str) -> User | None:

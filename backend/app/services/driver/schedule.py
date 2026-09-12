@@ -3,9 +3,11 @@
 from sqlalchemy.orm import Session
 import uuid
 
+from app.auth import Principal
 from app.models.charging_session import ChargingSession
 from app.models.ev import EV
 from app.models.optimization_run import OptimizationRun
+from app.services.driver.authorization import get_authorized_ev
 from app.services.optimization.optimizer import get_active_run
 from app.schemas.driver import (
     ScheduleAcceptRequest,
@@ -32,10 +34,10 @@ def _get_or_create_session(db: Session, ev: EV) -> ChargingSession:
     return session
 
 
-def accept_schedule(db: Session, ev_id: str, req: ScheduleAcceptRequest) -> ScheduleAcceptResponse:
-    ev = db.get(EV, ev_id)
-    if ev is None:
-        raise LookupError(f"Unknown EV {ev_id}")
+def accept_schedule(
+    db: Session, principal: Principal, req: ScheduleAcceptRequest, ev_id: str | None = None
+) -> ScheduleAcceptResponse:
+    ev = get_authorized_ev(db, principal, ev_id)
 
     run = db.get(OptimizationRun, req.optimization_run_id)
     if run is None:
@@ -51,13 +53,13 @@ def accept_schedule(db: Session, ev_id: str, req: ScheduleAcceptRequest) -> Sche
     db.commit()
     db.refresh(session)
 
-    return ScheduleAcceptResponse(ev_id=ev_id, accepted=True, status=SessionStatus.scheduled)
+    return ScheduleAcceptResponse(ev_id=ev.id, accepted=True, status=SessionStatus.scheduled)
 
 
-def override_schedule(db: Session, ev_id: str, req: ScheduleOverrideRequest) -> ScheduleOverrideResponse:
-    ev = db.get(EV, ev_id)
-    if ev is None:
-        raise LookupError(f"Unknown EV {ev_id}")
+def override_schedule(
+    db: Session, principal: Principal, req: ScheduleOverrideRequest, ev_id: str | None = None
+) -> ScheduleOverrideResponse:
+    ev = get_authorized_ev(db, principal, ev_id)
 
     feasible, explanation, alternatives = _check_feasibility(ev, req)
     session = _get_or_create_session(db, ev)
@@ -72,7 +74,7 @@ def override_schedule(db: Session, ev_id: str, req: ScheduleOverrideRequest) -> 
     db.refresh(session)
 
     return ScheduleOverrideResponse(
-        ev_id=ev_id,
+        ev_id=ev.id,
         overridden=True,
         status=SessionStatus(session.status),
         feasible=feasible,

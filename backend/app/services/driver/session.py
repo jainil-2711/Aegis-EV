@@ -2,23 +2,19 @@
 
 from sqlalchemy.orm import Session
 
+from app.auth import Principal
 from app.models.ev import EV
 from app.schemas.driver import DriverPreferencesUpdate, DriverSessionResponse
 from app.schemas.enums import Flexibility
+from app.services.driver.authorization import get_authorized_ev
 
 from app.services.shared.simulation_clock import current_demo_timestamp
 from app.config import get_settings
 
+# Canonical demo driver -> EV binding used by seeding (see app.auth
+# ensure_demo_users). Not a fallback for arbitrary access — access is always
+# resolved through get_authorized_ev() using the authenticated principal.
 DEMO_EV_ID = "EV-101"
-
-
-def _get_demo_ev(db: Session) -> EV:
-    ev = db.query(EV).filter(EV.id == DEMO_EV_ID).first()
-    if ev is None:
-        ev = db.query(EV).order_by(EV.id.asc()).first()
-    if ev is None:
-        raise LookupError("No seeded EV data found. Has scripts/seed_demo.py run?")
-    return ev
 
 
 def _required_energy_kwh(ev: EV) -> float:
@@ -61,15 +57,15 @@ def _to_response(ev: EV) -> DriverSessionResponse:
     )
 
 
-def get_driver_session(db: Session) -> DriverSessionResponse:
-    ev = _get_demo_ev(db)
+def get_driver_session(db: Session, principal: Principal, ev_id: str | None = None) -> DriverSessionResponse:
+    ev = get_authorized_ev(db, principal, ev_id)
     return _to_response(ev)
 
 
 def update_driver_preferences(
-    db: Session, update: DriverPreferencesUpdate
+    db: Session, principal: Principal, update: DriverPreferencesUpdate, ev_id: str | None = None
 ) -> DriverSessionResponse:
-    ev = _get_demo_ev(db)
+    ev = get_authorized_ev(db, principal, ev_id)
 
     if update.target_soc is not None and update.target_soc < ev.current_soc:
         raise ValueError("target_soc cannot be below current_soc")

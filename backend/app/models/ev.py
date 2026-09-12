@@ -29,3 +29,11 @@ class EV(Base):
     # Demo-only metadata, not part of the public API contract.
     profile: Mapped[str] = mapped_column(String, default="commuter")
     data_source: Mapped[str] = mapped_column(String, default="synthetic")
+
+    # Server-side driver ownership binding (P3). The authenticated driver
+    # principal, not any client-supplied ev_id, determines which EV a driver
+    # is authorized to see or act on. Nullable because most synthetic demo
+    # EVs are not associated with any real driver account.
+    owner_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, default=None
+    )

@@ -3,6 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import Principal
 from app.config import get_settings
 from app.models.charging_schedule_entry import ChargingScheduleEntry
 from app.models.charging_session import ChargingSession
@@ -11,14 +12,16 @@ from app.models.energy_slot import EnergySlot
 from app.engine.green_score import calculate_green_score
 from app.schemas.driver import DriverSessionStatusResponse
 from app.schemas.enums import SessionStatus
+from app.services.driver.authorization import get_authorized_ev
 from app.services.optimization.optimizer import get_active_run
 from app.services.shared.simulation_clock import current_demo_timestamp
 
 
-def get_session_status(db: Session, ev_id: str) -> DriverSessionStatusResponse:
-    ev = db.get(EV, ev_id)
-    if ev is None:
-        raise LookupError(f"Unknown EV {ev_id}")
+def get_session_status(
+    db: Session, principal: Principal, ev_id: str | None = None
+) -> DriverSessionStatusResponse:
+    ev = get_authorized_ev(db, principal, ev_id)
+    ev_id = ev.id
 
     session = db.query(ChargingSession).filter(ChargingSession.ev_id == ev_id).first()
     status = SessionStatus(session.status) if session else SessionStatus.pending

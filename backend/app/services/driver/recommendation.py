@@ -5,12 +5,13 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import Principal
 from app.models.charging_schedule_entry import ChargingScheduleEntry
-from app.models.ev import EV
 from app.models.energy_slot import EnergySlot
 from app.engine.green_score import calculate_green_score
 from app.models.optimization_run import OptimizationRun
 from app.schemas.driver import DriverRecommendationResponse
+from app.services.driver.authorization import get_authorized_ev
 from app.services.optimization.optimizer import get_active_run
 
 
@@ -32,10 +33,10 @@ def _entries_for_run(db: Session, run_id: str, ev_id: str) -> list[ChargingSched
     )
 
 
-def get_driver_recommendation(db: Session, ev_id: str) -> DriverRecommendationResponse:
-    ev = db.get(EV, ev_id)
-    if ev is None:
-        raise NoActiveScheduleError(f"Unknown EV {ev_id}.")
+def get_driver_recommendation(
+    db: Session, principal: Principal, ev_id: str | None = None
+) -> DriverRecommendationResponse:
+    ev = get_authorized_ev(db, principal, ev_id)
 
     run = get_active_run(db)
     if run is None:
@@ -43,9 +44,9 @@ def get_driver_recommendation(db: Session, ev_id: str) -> DriverRecommendationRe
             "No active optimization schedule is available yet. The network operator must apply an optimization schedule first."
         )
 
-    entries = _entries_for_run(db, run.id, ev_id)
+    entries = _entries_for_run(db, run.id, ev.id)
     if not entries:
-        raise NoActiveScheduleError(f"No schedule entries for {ev_id} in run {run.id}.")
+        raise NoActiveScheduleError(f"No schedule entries for {ev.id} in run {run.id}.")
 
     total_energy_kwh = sum(e.energy_kwh for e in entries)
     total_cost = sum(e.cost for e in entries)
