@@ -48,12 +48,15 @@ except ImportError:  # pragma: no cover - environment dependent
 SLOT_MINUTES = 30
 POWER_UNIT_KW = 0.1
 ENERGY_UNIT_KWH = 0.01
-
 # Integer objective penalty for operator GridSignal soft guidance.
 # It must be strong enough to materially affect candidate scheduling
 # when the published signal is restrictive, while remaining a soft
 # objective term rather than a hard constraint.
 GRID_SIGNAL_PENALTY = 50_000
+# Renewable preference is scaled into the same order of magnitude as the
+# integerized price/carbon objective coefficients so renewable-rich slots can
+# materially affect greenest/balanced scheduling without becoming a hard rule.
+RENEWABLE_BONUS_SCALE = 1_000
 
 
 class OptimizationError(RuntimeError):
@@ -445,7 +448,7 @@ class OptimizationService:
 
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = 20.0
-        solver.parameters.num_search_workers = 4
+        solver.parameters.num_search_workers = 1
         solver.parameters.random_seed = int(self.settings.seed)
         solver.parameters.log_search_progress = False
 
@@ -509,7 +512,8 @@ class OptimizationService:
 
                 cost_paise_per_var = max(1, int(round(energy_units * slot.electricity_price * 100)))
                 carbon_grams_per_var = max(0, int(round(energy_units * slot.carbon_intensity * 1000)))
-                renewable_bonus_per_var = int(round(energy_units * min(1.0, slot.renewable_kw / max(slot.base_load_kw, 1.0))))
+                renewable_ratio = min(1.0, max(0.0, slot.renewable_kw) / max(slot.base_load_kw, 1.0))
+                renewable_bonus_per_var = int(round(energy_units * renewable_ratio * RENEWABLE_BONUS_SCALE))
 
                 if objective == OperatorObjective.cheapest:
                     coeff = cost_paise_per_var * 10 + carbon_grams_per_var

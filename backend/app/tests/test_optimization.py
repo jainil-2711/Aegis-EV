@@ -246,6 +246,76 @@ def test_grid_signal_changes_candidate_schedule_when_soft_guidance_is_material(o
         db.close()
 
 
+
+@pytest.mark.skipif(not ORTOOLS_AVAILABLE, reason="OR-Tools not installed in the test environment")
+def test_greenest_objective_prefers_renewable_rich_slot(optimizer_client, settings):
+    """Renewable availability must materially affect the optimization decision.
+
+    The two slots have identical price/carbon and the EV can charge in either.
+    The later slot is deliberately renewable-rich, so the greenest objective
+    should choose it rather than merely accounting for renewable energy after
+    the schedule has already been chosen.
+    """
+    from app import models  # noqa: F401
+    from sqlalchemy import delete
+
+    db_dependency = app.dependency_overrides[get_db]
+    db = next(db_dependency())
+    try:
+        for model in (GridSignal, EV, Charger, Station, EnergySlot):
+            db.execute(delete(model))
+        db.commit()
+
+        station = Station(id="ST-RENEW", name="Renewable Test Station", capacity_kw=10.0, charger_count=1)
+        charger = Charger(
+            id="CH-RENEW",
+            station_id=station.id,
+            max_power_kw=10.0,
+            connector_type="ccs",
+            status="available",
+        )
+        ev = EV(
+            id="EV-RENEW",
+            battery_capacity_kwh=10.0,
+            current_soc=0.0,
+            target_soc=50.0,
+            arrival_time=datetime(2026, 9, 12, 12, 0),
+            departure_time=datetime(2026, 9, 12, 13, 0),
+            max_charge_kw=10.0,
+            efficiency=1.0,
+            preference="balanced",
+            charger_id=charger.id,
+            flexibility="high",
+            profile="test",
+            data_source="synthetic",
+        )
+        slots = [
+            EnergySlot(
+                timestamp=datetime(2026, 9, 12, 12, 0),
+                base_load_kw=100.0,
+                renewable_kw=0.0,
+                grid_capacity_kw=110.0,
+                electricity_price=8.0,
+                carbon_intensity=0.75,
+            ),
+            EnergySlot(
+                timestamp=datetime(2026, 9, 12, 12, 30),
+                base_load_kw=100.0,
+                renewable_kw=100.0,
+                grid_capacity_kw=110.0,
+                electricity_price=8.0,
+                carbon_intensity=0.75,
+            ),
+        ]
+        db.add_all([station, charger, ev, *slots])
+        db.commit()
+
+        result = OptimizationService(db, settings).run(OperatorObjective.greenest)
+        chosen_times = {point.timestamp for point in result.candidate_schedule if point.energy_kwh > 0}
+        assert chosen_times == {datetime(2026, 9, 12, 12, 30)}
+    finally:
+        db.close()
+
 def test_environmental_accounting_formulas_are_consistent():
     assert renewable_share_pct(60.0, 20.0) == pytest.approx(33.3333333333)
     assert renewable_share_pct(60.0, 100.0) == 100.0
