@@ -1,33 +1,70 @@
 """
-Aegis — Optional Open-Meteo adapter (P1, Phase 6)
+Aegis — Open-Meteo weather adapter.
 
-External renewable/weather enrichment is OPTIONAL (PRD.md SS12,
-architecture.md SS11). This module must:
-  - never be called directly by the optimizer (architecture.md SS7),
-  - always have a synthetic fallback,
-  - never block startup or the demo if the network call fails.
+Responsibilities
+----------------
+This module is responsible only for retrieving and normalizing weather data.
 
-Wire this in behind app/data/synthetic/generator.py's renewable_kw values
-by calling `enrich_with_weather()` on a slot list; on any failure it
-returns the input unchanged.
+It does NOT:
+- calculate solar generation
+- calculate wind generation
+- create/update EnergySlot database rows
+- access the database
+- call the optimizer
+
+The renewable generation calculation belongs to:
+    backend/app/engine/renewables.py
+
+The normalized output from this module is intended to be consumed by:
+    backend/app/services/grid/energy_data.py
+
+Failure behavior
+----------------
+Open-Meteo is an optional external dependency. Any network/API/parsing
+failure returns None so the caller can fall back to deterministic synthetic
+data.
+
+Timezone
+--------
+The returned timestamps preserve the timezone information supplied by
+Open-Meteo. The normalizer is responsible for aligning those timestamps with
+the Aegis configured timezone and EnergySlot timestamps.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger("aegis.external.open_meteo")
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 
-def fetch_solar_wind_forecast(latitude: float, longitude: float) -> dict | None:
+@dataclass(frozen=True)
+class WeatherRecord:
+    """Normalized weather input for one forecast timestamp.
+
+    These are weather measurements/forecast inputs, NOT power generation.
     """
-    Best-effort fetch of solar/wind-relevant fields from Open-Meteo.
-    Returns None on any failure so callers can fall back to synthetic data.
-    This function intentionally has no retry/backoff logic — for a
-    hackathon demo, one failed attempt should fall back immediately
-    (architecture.md SS16 "reliability").
+
+    timestamp: datetime
+    irradiance_w_m2: float
+    wind_speed_mps: float
+
+
+def fetch_solar_wind_forecast(
+    latitude: float,
+    longitude: float,
+) -> dict[str, Any] | None:
+    """Fetch solar/wind-relevant forecast data from Open-Meteo.
+
+    Returns the raw JSON dictionary on success.
+
+    Returns None on any network, HTTP, or parsing failure so that the
+    application can use synthetic renewable data instead.
     """
     try:
         import httpx
@@ -37,50 +74,130 @@ def fetch_solar_wind_forecast(latitude: float, longitude: float) -> dict | None:
             "longitude": longitude,
             "hourly": "shortwave_radiation,wind_speed_10m",
             "forecast_days": 1,
+            "timezone": "Asia/Kolkata",
         }
-        response = httpx.get(OPEN_METEO_URL, params=params, timeout=3.0)
+
+        response = httpx.get(
+            OPEN_METEO_URL,
+            params=params,
+            timeout=3.0,
+        )
         response.raise_for_status()
-        return response.json()
-    except Exception as exc:  # noqa: BLE001 - deliberate broad catch, see docstring
-        logger.warning("Open-Meteo fetch failed, falling back to synthetic: %s", exc)
+
+        payload = response.json()
+
+        if not isinstance(payload, dict):
+            logger.warning(
+                "Open-Meteo returned an unexpected payload type: %s",
+                type(payload).__name__,
+            )
+            return None
+
+        return payload
+
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Open-Meteo fetch failed, synthetic fallback will be used: %s",
+            exc,
+        )
         return None
 
 
-def enrich_with_weather(
-    slots: list[dict], latitude: float = 23.03, longitude: float = 72.58
-) -> list[dict]:
+def _parse_weather_records(
+    forecast: dict[str, Any],
+) -> list[WeatherRecord]:
+    """Convert Open-Meteo's hourly response into normalized records."""
+
+    hourly = forecast.get("hourly")
+    if not isinstance(hourly, dict):
+        raise ValueError("Open-Meteo response does not contain valid hourly data")
+
+    timestamps = hourly.get("time")
+    radiation = hourly.get("shortwave_radiation")
+    wind = hourly.get("wind_speed_10m")
+
+    if not isinstance(timestamps, list):
+        raise ValueError("Open-Meteo hourly.time is missing or invalid")
+
+    if not isinstance(radiation, list):
+        raise ValueError(
+            "Open-Meteo hourly.shortwave_radiation is missing or invalid"
+        )
+
+    if not isinstance(wind, list):
+        raise ValueError(
+            "Open-Meteo hourly.wind_speed_10m is missing or invalid"
+        )
+
+    record_count = min(
+        len(timestamps),
+        len(radiation),
+        len(wind),
+    )
+
+    records: list[WeatherRecord] = []
+
+    for index in range(record_count):
+        timestamp_value = timestamps[index]
+        radiation_value = radiation[index]
+        wind_value = wind[index]
+
+        try:
+            timestamp = datetime.fromisoformat(timestamp_value)
+            irradiance_w_m2 = float(radiation_value or 0.0)
+            wind_speed_mps = float(wind_value or 0.0)
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Skipping malformed Open-Meteo record at index %s: %s",
+                index,
+                exc,
+            )
+            continue
+
+        if irradiance_w_m2 < 0:
+            irradiance_w_m2 = 0.0
+
+        if wind_speed_mps < 0:
+            wind_speed_mps = 0.0
+
+        records.append(
+            WeatherRecord(
+                timestamp=timestamp,
+                irradiance_w_m2=irradiance_w_m2,
+                wind_speed_mps=wind_speed_mps,
+            )
+        )
+
+    if not records:
+        raise ValueError("Open-Meteo response contained no valid weather records")
+
+    return records
+
+
+def get_weather_records(
+    latitude: float = 23.03,
+    longitude: float = 72.58,
+) -> list[WeatherRecord] | None:
+    """Fetch and normalize Open-Meteo weather data.
+
+    Returns:
+        A list of normalized WeatherRecord objects on success.
+        None when the external feed is unavailable or malformed.
     """
-    Attempt to nudge synthetic renewable_kw values using real solar/wind
-    data. On any failure, or if the response shape is unexpected, returns
-    `slots` completely unchanged — synthetic data is the guaranteed
-    fallback (PRD.md SS12).
-    """
-    forecast = fetch_solar_wind_forecast(latitude, longitude)
-    if not forecast:
-        return slots
+    forecast = fetch_solar_wind_forecast(
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+    if forecast is None:
+        return None
 
     try:
-        hourly = forecast["hourly"]
-        radiation = hourly["shortwave_radiation"]
-        wind = hourly["wind_speed_10m"]
-    except (KeyError, TypeError):
-        return slots
-
-    enriched = []
-    for i, slot in enumerate(slots):
-        hour_index = min(i // 2, len(radiation) - 1, len(wind) - 1)
-        if hour_index < 0:
-            enriched.append(slot)
-            continue
-        # Blend: keep the synthetic baseline shape, nudge magnitude toward
-        # real conditions rather than replacing it outright.
-        solar_factor = 1.0 + (radiation[hour_index] / 1000.0 - 0.3)
-        wind_factor = 1.0 + (wind[hour_index] / 20.0 - 0.3)
-        blended = dict(slot)
-        blended["renewable_kw"] = round(
-            max(0.0, slot["renewable_kw"] * (0.7 + 0.3 * ((solar_factor + wind_factor) / 2))),
-            1,
+        return _parse_weather_records(forecast)
+    except (TypeError, ValueError, KeyError) as exc:
+        logger.warning(
+            "Open-Meteo response normalization failed; "
+            "synthetic fallback will be used: %s",
+            exc,
         )
-        enriched.append(blended)
-
-    return enriched
+        return None
