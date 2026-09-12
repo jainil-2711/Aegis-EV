@@ -1,23 +1,65 @@
 """
-Aegis — Grid schemas (api-contract.md SS3, data-spec.md SS8)
+Aegis — Grid API schemas (P1)
 
-Domain: P1. Shape is part of the frozen contract — mirrors api.ts.
+These schemas define the Grid API contract.
+
+Grid numerical relationships:
+
+    renewable_generation_kw
+        = solar_generation_kw + wind_generation_kw
+
+    grid_demand_kw
+        = base_load_kw + current_ev_load_kw
+
+    headroom_kw
+        = grid_capacity_kw - grid_demand_kw
 """
+
+from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app.schemas.enums import GridCondition, RenewableAvailability, SignalOperator
+from app.schemas.enums import (
+    GridCondition,
+    RenewableAvailability,
+    SignalOperator,
+)
 from app.schemas.shared import EnergySlot, EVLoad
 
 
 class GridStatusResponse(BaseModel):
-    grid_demand_kw: float
-    grid_capacity_kw: float
-    renewable_generation_kw: float
+    """Current grid/network state for the active demo timestamp."""
+
+    # Grid demand components
+    base_load_kw: float = Field(
+        ge=0.0,
+    )
+
     ev_load: EVLoad
+
+    grid_demand_kw: float
+
+    # Grid capacity/headroom
+    grid_capacity_kw: float
     headroom_kw: float
+
+    # Renewable generation
+    solar_generation_kw: float = Field(
+        ge=0.0,
+    )
+
+    wind_generation_kw: float = Field(
+        ge=0.0,
+    )
+
+    renewable_generation_kw: float = Field(
+        ge=0.0,
+    )
+
+    # Data provenance
+    source_type: str
 
 
 class GridForecastResponse(BaseModel):
@@ -37,7 +79,9 @@ class GridSignal(GridSignalCreate):
     id: str
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {
+        "from_attributes": True
+    }
 
 
 class GridSignalsResponse(BaseModel):

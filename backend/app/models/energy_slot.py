@@ -17,13 +17,26 @@ class EnergySlot(Base):
     base_load_kw: Mapped[float] = mapped_column(Float)
     grid_capacity_kw: Mapped[float] = mapped_column(Float)
 
-    # Renewable generation — Aegis-derived values
-    solar_generation_kw: Mapped[float] = mapped_column(Float)
-    wind_generation_kw: Mapped[float] = mapped_column(Float)
+    solar_generation_kw: Mapped[float] = mapped_column(
+        Float,
+        default=0.0,
+        server_default="0.0",
+        nullable=False,
+    )
 
-    # Canonical renewable total:
-    # renewable_kw = solar_generation_kw + wind_generation_kw
-    renewable_kw: Mapped[float] = mapped_column(Float)
+    wind_generation_kw: Mapped[float] = mapped_column(
+        Float,
+        default=0.0,
+        server_default="0.0",
+        nullable=False,
+    )
+
+    renewable_kw: Mapped[float] = mapped_column(
+        Float,
+        default=0.0,
+        server_default="0.0",
+        nullable=False,
+    )
 
     # Energy/economic context
     electricity_price: Mapped[float] = mapped_column(Float)

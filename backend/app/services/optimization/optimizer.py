@@ -48,11 +48,12 @@ except ImportError:  # pragma: no cover - environment dependent
 SLOT_MINUTES = 30
 POWER_UNIT_KW = 0.1
 ENERGY_UNIT_KWH = 0.01
-# GridSignal deviations must be meaningful enough to influence a candidate
-# schedule, while remaining soft guidance rather than a hard constraint. The
-# optimizer coefficients are integerized at much larger scales (paise/grams),
-# so a small penalty would otherwise be numerically irrelevant.
-GRID_SIGNAL_PENALTY_WEIGHT = 5000
+
+# Integer objective penalty for operator GridSignal soft guidance.
+# It must be strong enough to materially affect candidate scheduling
+# when the published signal is restrictive, while remaining a soft
+# objective term rather than a hard constraint.
+GRID_SIGNAL_PENALTY = 50_000
 
 
 class OptimizationError(RuntimeError):
@@ -582,12 +583,10 @@ class OptimizationService:
                 else:  # gte
                     model.Add(deviation >= recommended_units - slot_total[i])
                 model.Add(deviation >= 0)
-                # The objective uses integerized paise/grams coefficients, so a
-                # single-unit penalty is too small to influence schedule choice.
-                # This weight is deliberately finite: it can steer flexible EVs
-                # away from an advised window without turning the signal into a
-                # hard feasibility constraint.
-                terms.append(deviation * GRID_SIGNAL_PENALTY_WEIGHT)
+                # GridSignal remains a soft objective term. The penalty is
+                # intentionally large enough to outweigh a modest price
+                # advantage when the operator publishes restrictive guidance.
+                terms.append(deviation * GRID_SIGNAL_PENALTY)
         return terms
 
     # ------------------------------------------------------------------
