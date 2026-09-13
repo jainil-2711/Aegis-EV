@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DriverSessionStatusResponse } from "../types/api";
 import { getDriverSessionStatus } from "../services/driver";
+import { isAuthOrPermissionError } from "../services/http";
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -18,13 +19,27 @@ export function useDriverSessionStatus(enabled: boolean) {
     }
 
     let cancelled = false;
+    const stopPolling = () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    };
+
     const poll = async () => {
       setLoading(true);
       try {
         const data = await getDriverSessionStatus();
         if (!cancelled) { setStatus(data); setError(null); }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to refresh status");
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to refresh status");
+        }
+        // A 401/403 here means this session no longer has permission to
+        // read this driver's status (token expired, or the signed-in role
+        // changed in this browser). Retrying every 5s would never succeed
+        // and only spams the backend — stop instead of looping forever.
+        if (isAuthOrPermissionError(err)) {
+          stopPolling();
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -34,8 +49,7 @@ export function useDriverSessionStatus(enabled: boolean) {
     intervalRef.current = setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      intervalRef.current = null;
+      stopPolling();
     };
   }, [enabled]);
 

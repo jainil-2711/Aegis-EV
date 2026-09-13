@@ -107,3 +107,47 @@ def test_network_impact_after_apply(client):
 
 def test_no_dedicated_pricing_endpoint(client):
     assert client.get("/api/pricing").status_code == 404
+
+
+def test_network_impact_ignores_unapplied_candidate(client):
+    """Network impact must mean ACTIVE, never a later unapplied candidate
+    (P4 Task 1). Sequence: apply run A, create (but do not apply) run B,
+    confirm impact still reports A — never B, and never a 200 built from B.
+    """
+    pytest.importorskip("ortools", reason="OR-Tools required for optimizer integration")
+
+    run_a = client.post("/api/optimization/run", json={"mode": "cheapest"})
+    assert run_a.status_code == 200
+    run_a_id = run_a.json()["id"]
+
+    applied_a = client.post(
+        "/api/optimization/apply", json={"optimization_run_id": run_a_id}
+    )
+    assert applied_a.status_code == 200
+
+    impact_after_a = client.get("/api/network/impact")
+    assert impact_after_a.status_code == 200
+    assert impact_after_a.json()["active_optimization_run_id"] == run_a_id
+
+    # Create a second candidate — deliberately do NOT apply it.
+    run_b = client.post("/api/optimization/run", json={"mode": "greenest"})
+    assert run_b.status_code == 200
+    run_b_id = run_b.json()["id"]
+    assert run_b_id != run_a_id
+
+    impact_still_a = client.get("/api/network/impact")
+    assert impact_still_a.status_code == 200
+    assert impact_still_a.json()["active_optimization_run_id"] == run_a_id, (
+        "Network impact must not follow an unapplied candidate"
+    )
+
+    # Now apply B and confirm impact moves to B (proves apply, not creation,
+    # is what changes the active schedule).
+    applied_b = client.post(
+        "/api/optimization/apply", json={"optimization_run_id": run_b_id}
+    )
+    assert applied_b.status_code == 200
+
+    impact_after_b = client.get("/api/network/impact")
+    assert impact_after_b.status_code == 200
+    assert impact_after_b.json()["active_optimization_run_id"] == run_b_id

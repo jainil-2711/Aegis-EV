@@ -9,7 +9,7 @@ import type {
   ScheduleOverrideRequest,
   ScheduleOverrideResponse,
 } from "../types/api";
-import { apiFetch, readApiError } from "./http";
+import { ApiError, apiFetch } from "./http";
 
 const BASE_URL = "/api/driver";
 
@@ -30,7 +30,11 @@ async function handle<T>(res: Response): Promise<T> {
     } catch {
       // Keep the generic HTTP error.
     }
-    throw new Error(message);
+    // Preserve the status code (401/403 are permanent for this session —
+    // callers like useDriverSessionStatus rely on this to stop polling
+    // instead of retrying against an endpoint they'll never be allowed to
+    // reach again this session).
+    throw new ApiError(message, res.status);
   }
   return res.json() as Promise<T>;
 }

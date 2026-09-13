@@ -6,7 +6,7 @@ import type {
   OptimizationRunResponse,
   OptimizationScheduleResponse,
 } from "../types/api";
-import { apiFetch, readApiError } from "./http";
+import { apiFetch } from "./http";
 
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {

@@ -37,6 +37,12 @@ def get_network_status(
     load = get_ev_load(db, settings)
     active_evs, active_chargers = _active_counts(db, settings)
 
+    # NOTE (P4 Task 4): this is a *coverage ratio* — renewable generation as a
+    # share of current grid demand — not installed renewable capacity or
+    # availability. The wire field name (renewable_availability_pct) is kept
+    # for API-contract stability; the frontend labels this "Renewable
+    # coverage" to avoid the misleading name. A true field rename would touch
+    # backend/app/schemas/operator.py and needs cross-role coordination.
     renewable_pct = (
         min(100.0, max(0.0, grid.renewable_generation_kw / grid.grid_demand_kw * 100.0))
         if grid.grid_demand_kw > 0
@@ -59,10 +65,16 @@ def get_network_status(
 
 
 def get_network_impact(db: Session) -> NetworkImpactResponse:
+    """Operational network impact must reflect the single ACTIVE (applied)
+    schedule only. An unapplied candidate produced by POST /api/optimization/run
+    must never be surfaced here — that preview lives in the optimization
+    workspace response, not in operational network impact (P4 Task 1).
+    """
     run = get_active_or_latest_run(db)
-    if run is None:
+    if run is None or run.status != "applied":
         raise NoActiveScheduleError(
-            "No optimization run available yet. Run POST /api/optimization/run first."
+            "No active (applied) schedule yet. Run POST /api/optimization/run "
+            "and then POST /api/optimization/apply to publish a schedule first."
         )
 
     baseline, candidate = get_run_metrics(db, get_settings(), run)

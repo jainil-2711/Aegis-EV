@@ -17,6 +17,7 @@ import type {
   SignalOperator,
 } from "../../types/api";
 import AegisIntelligence from "../../components/AegisIntelligence";
+import SourceBadge from "../../components/SourceBadge";
 
 const conditions: GridCondition[] = [
   "normal",
@@ -38,10 +39,23 @@ const availabilityLabel: Record<RenewableAvailability, string> = {
   high: "High",
 };
 
-function MetricCard({ label, value, note }: { label: string; value: string; note?: string }) {
+function MetricCard({
+  label,
+  value,
+  note,
+  source,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  source?: "simulated" | "live_weather" | "calculated" | "optimized";
+}) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+        {source && <SourceBadge kind={source} />}
+      </div>
       <p className="mt-1 text-xl font-semibold text-slate-900">{value}</p>
       {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
     </div>
@@ -130,11 +144,21 @@ export default function GridView() {
       </header>
 
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-        <MetricCard label="Grid demand" value={`${status.grid_demand_kw.toFixed(0)} kW`} note="Base load + current EV load" />
-        <MetricCard label="Grid capacity" value={`${status.grid_capacity_kw.toFixed(0)} kW`} />
-        <MetricCard label="Headroom" value={`${status.headroom_kw.toFixed(0)} kW`} />
-        <MetricCard label="Renewable generation" value={`${status.renewable_generation_kw.toFixed(0)} kW`} />
-        <MetricCard label="Aggregate EV load" value={`${status.ev_load.current_ev_load_kw.toFixed(0)} kW`} note={`Peak ${status.ev_load.peak_ev_load_kw.toFixed(0)} kW`} />
+        <MetricCard
+          label="Grid demand"
+          value={`${status.grid_demand_kw.toFixed(0)} kW`}
+          note={`${Math.max(0, status.grid_demand_kw - status.ev_load.current_ev_load_kw).toFixed(0)} base + ${status.ev_load.current_ev_load_kw.toFixed(0)} EV load`}
+          source="calculated"
+        />
+        <MetricCard label="Grid capacity" value={`${status.grid_capacity_kw.toFixed(0)} kW`} source="calculated" />
+        <MetricCard
+          label="Headroom"
+          value={`${status.headroom_kw.toFixed(0)} kW`}
+          note={`${status.grid_capacity_kw.toFixed(0)} capacity − ${status.grid_demand_kw.toFixed(0)} demand`}
+          source="calculated"
+        />
+        <MetricCard label="Renewable generation" value={`${status.renewable_generation_kw.toFixed(0)} kW`} source="simulated" />
+        <MetricCard label="Aggregate EV load" value={`${status.ev_load.current_ev_load_kw.toFixed(0)} kW`} note={`Peak ${status.ev_load.peak_ev_load_kw.toFixed(0)} kW`} source="optimized" />
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -236,7 +260,7 @@ export default function GridView() {
         subtitle="System context"
         items={[
           { label: "Demand", value: `${status.grid_demand_kw.toFixed(0)} kW of ${status.grid_capacity_kw.toFixed(0)} kW capacity`, tone: "cyan" },
-          { label: "Renewable pulse", value: `${status.renewable_generation_kw.toFixed(0)} kW generation available now`, tone: "green" },
+          { label: "Renewable pulse (simulated feed)", value: `${status.renewable_generation_kw.toFixed(0)} kW generation available now`, tone: "green" },
           { label: "Headroom", value: `${status.headroom_kw.toFixed(0)} kW remaining before capacity`, tone: status.headroom_kw < 300 ? "amber" : "slate" },
         ]}
         footer="Aegis translates these system signals into optimizer inputs. Publishing a signal does not directly control any individual vehicle."

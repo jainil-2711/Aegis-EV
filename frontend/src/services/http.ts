@@ -1,5 +1,24 @@
 import { getToken, logout } from "./auth";
 
+/**
+ * An API error that preserves the HTTP status code so callers (especially
+ * polling hooks) can distinguish a permanent auth/authorization failure
+ * (401/403 — retrying will never succeed) from a transient one worth
+ * retrying.
+ */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+export function isAuthOrPermissionError(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 401 || err.status === 403);
+}
+
 export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const token = getToken();

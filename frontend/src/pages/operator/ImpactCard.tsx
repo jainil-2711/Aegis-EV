@@ -1,4 +1,5 @@
 import type { NetworkImpactResponse } from "../../types/api";
+import SourceBadge from "../../components/SourceBadge";
 
 interface ImpactCardProps { impact: NetworkImpactResponse; }
 
@@ -38,10 +39,13 @@ export default function ImpactCard({ impact }: ImpactCardProps) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Measured impact</p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-900">Baseline → optimized</h2>
-          <p className="mt-1 text-xs text-slate-500">Before = deterministic baseline. After = the schedule in this optimization run.</p>
+          <h2 className="mt-1 text-lg font-semibold text-slate-900">Baseline → active schedule</h2>
+          <p className="mt-1 text-xs text-slate-500">Before = deterministic baseline. After = the currently active (applied) schedule — never an unapplied candidate.</p>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Run {impact.active_optimization_run_id}</span>
+        <div className="flex flex-col items-end gap-1">
+          <SourceBadge kind="optimized" />
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Active run {impact.active_optimization_run_id}</span>
+        </div>
       </div>
       <div className="mt-3">
         <Row label="Peak EV load" before={impact.peak_load_kw.before} after={impact.peak_load_kw.after} unit=" kW" />
