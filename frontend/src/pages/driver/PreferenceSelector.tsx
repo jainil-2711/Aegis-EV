@@ -1,16 +1,40 @@
-import type { DriverPreference } from "../../types/api";
+import type {
+  DriverPreference,
+} from "../../types/api";
 
 interface PreferenceSelectorProps {
   value: DriverPreference;
-  onChange: (preference: DriverPreference) => void;
+  onChange: (
+    preference: DriverPreference,
+  ) => void;
   disabled?: boolean;
 }
 
-const OPTIONS: { value: DriverPreference; label: string }[] = [
-  { value: "cheapest", label: "Cheapest" },
-  { value: "greenest", label: "Greenest" },
-  { value: "balanced", label: "Balanced" },
-  { value: "immediate", label: "Immediate" },
+const OPTIONS: {
+  value: DriverPreference;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "cheapest",
+    label: "Cheapest",
+    description: "Lower modeled cost",
+  },
+  {
+    value: "greenest",
+    label: "Greenest",
+    description: "Cleaner energy",
+  },
+  {
+    value: "balanced",
+    label: "Balanced",
+    description: "Trade off objectives",
+  },
+  {
+    value: "immediate",
+    label: "Immediate",
+    description: "Charge sooner",
+  },
 ];
 
 export default function PreferenceSelector({
@@ -19,27 +43,56 @@ export default function PreferenceSelector({
   disabled,
 }: PreferenceSelectorProps) {
   return (
-    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Charging preference">
-      {OPTIONS.map((opt) => {
-        const active = opt.value === value;
+    <div
+      className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      role="radiogroup"
+      aria-label="Charging preference"
+    >
+      {OPTIONS.map((option) => {
+        const active =
+          option.value === value;
+
         return (
           <button
-            key={opt.value}
+            key={option.value}
             type="button"
             role="radio"
             aria-checked={active}
             disabled={disabled}
-            onClick={() => onChange(opt.value)}
+            onClick={() =>
+              onChange(
+                option.value,
+              )
+            }
             className={[
-              "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+              "min-h-[122px] rounded-2xl border p-6 text-left",
+              "focus:outline-none focus-visible:ring-4 focus-visible:ring-[#EEF2F7]",
               active
-                ? "border-blue-600 bg-blue-50 text-blue-700"
-                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
-              disabled ? "cursor-not-allowed opacity-60" : "",
+                ? "border-[#BFC9D8] bg-[#EEF2F7]"
+                : "border-[#E1E6EC] bg-white hover:bg-[#F7F8FA]",
+              disabled
+                ? "cursor-not-allowed opacity-60"
+                : "",
             ].join(" ")}
           >
-            {opt.label}
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-base font-semibold text-[#071A3D]">
+                {option.label}
+              </span>
+
+              <span
+                className={[
+                  "h-3 w-3 rounded-full",
+                  active
+                    ? "bg-[#071A3D]"
+                    : "bg-[#C8CFDA]",
+                ].join(" ")}
+              />
+            </div>
+
+            <p className="mt-2 text-sm leading-5 text-[#66758B]">
+              {option.description}
+            </p>
           </button>
         );
       })}

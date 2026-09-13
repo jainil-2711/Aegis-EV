@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import type {
   ScheduleOverrideRequest,
   ScheduleOverrideResponse,
@@ -6,9 +7,13 @@ import type {
 
 interface AcceptOverrideActionsProps {
   accepted: boolean;
-  overrideResult: ScheduleOverrideResponse | null;
+  overrideResult:
+    | ScheduleOverrideResponse
+    | null;
   onAccept: () => void;
-  onOverride: (req: ScheduleOverrideRequest) => void;
+  onOverride: (
+    req: ScheduleOverrideRequest,
+  ) => void;
 }
 
 export default function AcceptOverrideActions({
@@ -17,53 +22,94 @@ export default function AcceptOverrideActions({
   onAccept,
   onOverride,
 }: AcceptOverrideActionsProps) {
-  const [showOverrideForm, setShowOverrideForm] = useState(false);
-  const [requestedPower, setRequestedPower] = useState("");
+  const [
+    showOverrideForm,
+    setShowOverrideForm,
+  ] = useState(false);
 
-  const handleOverrideSubmit = () => {
+  const [
+    requestedPower,
+    setRequestedPower,
+  ] = useState("");
+
+  function handleOverrideSubmit() {
     onOverride({
-      requested_power_kw: requestedPower ? Number(requestedPower) : undefined,
-      reason: "Driver requested to charge now",
+      requested_power_kw:
+        requestedPower
+          ? Number(requestedPower)
+          : undefined,
+      reason:
+        "Driver requested to charge now",
     });
+
     setShowOverrideForm(false);
-  };
+  }
 
   return (
-    <div className="mt-4 space-y-3">
-      <div className="flex gap-3">
+    <section className="rounded-2xl border border-[#E1E6EC] bg-white p-6 shadow-[0_10px_28px_rgba(15,36,68,0.045)] lg:p-8">
+      <p className="aegis-label text-[10px] font-semibold uppercase text-[#6F2C0F]">
+        Driver decision
+      </p>
+
+      <h2 className="aegis-display mt-3 text-3xl font-semibold tracking-tight text-[#071A3D]">
+        Choose what happens next
+      </h2>
+
+      <p className="mt-2 text-sm leading-6 text-[#66758B] lg:text-base">
+        Accept the network recommendation or
+        request charging now.
+      </p>
+
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
           onClick={onAccept}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="rounded-xl bg-[#071A3D] px-5 py-3.5 text-sm font-semibold text-white hover:bg-[#102A52]"
         >
           Accept recommendation
         </button>
+
         <button
           type="button"
-          onClick={() => setShowOverrideForm((s) => !s)}
-          className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          onClick={() =>
+            setShowOverrideForm(
+              (current) => !current,
+            )
+          }
+          className="rounded-xl border border-[#D8DEE8] bg-white px-5 py-3.5 text-sm font-semibold text-[#253957] hover:bg-[#F7F8FA]"
         >
-          Override / Charge now
+          {showOverrideForm
+            ? "Close override"
+            : "Override / Charge now"}
         </button>
       </div>
 
-      {/* Overriding is never framed as a penalty — plain, neutral copy only. */}
       {showOverrideForm && (
-        <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-          <label className="block text-sm text-slate-700">
+        <div className="mt-5 rounded-2xl border border-[#E1E6EC] bg-[#F7F8FA] p-5">
+          <label className="block text-sm font-semibold text-[#253957]">
             Requested power (kW), optional
+
             <input
               type="number"
+              min="0"
+              step="0.1"
               value={requestedPower}
-              onChange={(e) => setRequestedPower(e.target.value)}
-              className="mt-1 block w-40 rounded-md border border-slate-300 px-2 py-1 text-sm"
+              onChange={(e) =>
+                setRequestedPower(
+                  e.target.value,
+                )
+              }
               placeholder="e.g. 22"
+              className="mt-2 h-12 w-full max-w-xs rounded-xl border border-[#D8DEE8] bg-white px-3 text-sm outline-none focus:border-[#071A3D] focus:ring-4 focus:ring-[#EEF2F7]"
             />
           </label>
+
           <button
             type="button"
-            onClick={handleOverrideSubmit}
-            className="mt-3 rounded-md bg-slate-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-900"
+            onClick={
+              handleOverrideSubmit
+            }
+            className="mt-4 rounded-xl bg-[#071A3D] px-4 py-3 text-sm font-semibold text-white hover:bg-[#102A52]"
           >
             Confirm override
           </button>
@@ -71,34 +117,52 @@ export default function AcceptOverrideActions({
       )}
 
       {accepted && (
-        <p className="text-sm text-green-700">Recommendation accepted.</p>
-      )}
-
-      {overrideResult && !overrideResult.feasible && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-          <p className="text-sm font-medium text-amber-800">
-            That charging request isn't possible right now.
-          </p>
-          {overrideResult.explanation && (
-            <p className="mt-1 text-sm text-amber-700">
-              {overrideResult.explanation}
-            </p>
-          )}
-          {overrideResult.alternatives && overrideResult.alternatives.length > 0 && (
-            <ul className="mt-2 list-disc pl-5 text-sm text-amber-700">
-              {overrideResult.alternatives.map((alt) => (
-                <li key={alt}>{alt}</li>
-              ))}
-            </ul>
-          )}
+        <div className="mt-5 rounded-xl border border-[#CFD7E4] bg-[#EEF2F7] px-4 py-3 text-sm font-medium text-[#071A3D]">
+          Recommendation accepted.
         </div>
       )}
 
-      {overrideResult && overrideResult.feasible && (
-        <p className="text-sm text-slate-700">
-          Charging now, as requested. No fees or access changes apply.
-        </p>
-      )}
-    </div>
+      {overrideResult &&
+        !overrideResult.feasible && (
+          <div className="mt-5 rounded-xl border border-[#D9CEC6] bg-[#F8F1ED] p-5">
+            <p className="text-sm font-semibold text-[#6F2C0F]">
+              That charging request isn&apos;t
+              possible right now.
+            </p>
+
+            {overrideResult.explanation && (
+              <p className="mt-2 text-sm leading-6 text-[#6F2C0F]">
+                {
+                  overrideResult.explanation
+                }
+              </p>
+            )}
+
+            {overrideResult.alternatives &&
+              overrideResult.alternatives
+                .length > 0 && (
+                <ul className="mt-3 space-y-1.5 pl-5 text-sm text-[#6F2C0F]">
+                  {overrideResult.alternatives.map(
+                    (alternative) => (
+                      <li
+                        key={alternative}
+                      >
+                        {alternative}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              )}
+          </div>
+        )}
+
+      {overrideResult &&
+        overrideResult.feasible && (
+          <div className="mt-5 rounded-xl border border-[#CFD7E4] bg-[#EEF2F7] px-4 py-3 text-sm font-medium text-[#071A3D]">
+            Charging now, as requested. No
+            fees or access changes apply.
+          </div>
+        )}
+    </section>
   );
 }

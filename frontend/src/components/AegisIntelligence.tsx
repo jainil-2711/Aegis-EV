@@ -1,54 +1,114 @@
 interface IntelligenceProps {
   title?: string;
   subtitle?: string;
-  items: { label: string; value: string; tone?: "cyan" | "green" | "amber" | "slate" }[];
+  items: {
+    label: string;
+    value: string;
+    tone?: "navy" | "brown" | "gray" | "soft";
+  }[];
   footer?: string;
 }
 
 const toneClass = {
-  cyan: "border-cyan-300/30 bg-cyan-300/10 text-cyan-100",
-  green: "border-emerald-300/30 bg-emerald-300/10 text-emerald-100",
-  amber: "border-amber-300/30 bg-amber-300/10 text-amber-100",
-  slate: "border-white/10 bg-white/[0.04] text-slate-200",
+  navy: "border-[#CFD7E4] bg-[#EEF2F7]",
+  brown: "border-[#D9CEC6] bg-[#F8F1ED]",
+  gray: "border-[#E1E5EA] bg-[#F3F5F7]",
+  soft: "border-[#E1E5EA] bg-white",
 };
 
-export default function AegisIntelligence({ title = "Decision trace", subtitle = "Signal fusion", items, footer }: IntelligenceProps) {
+function AegisMark() {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-800 bg-[#07111f] text-white shadow-lg">
-      <div className="relative p-5">
-        <div className="absolute -right-16 -top-16 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
-        <div className="flex items-start justify-between gap-4">
+    <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#071A3D] text-xs font-semibold text-white">
+      A
+    </span>
+  );
+}
+
+export default function AegisIntelligence({
+  title = "Decision trace",
+  subtitle = "Signal fusion",
+  items,
+  footer,
+}: IntelligenceProps) {
+  return (
+    <section className="rounded-2xl border border-[#DEE3E9] bg-white shadow-[0_12px_36px_rgba(15,36,68,0.055)]">
+      <div className="p-6 lg:p-8">
+        <div className="flex items-start justify-between gap-5">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-cyan-300/30 bg-cyan-300/10 text-xs font-bold text-cyan-200">A</span>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300">Aegis Intelligence</p>
+            <div className="flex items-center gap-3">
+              <AegisMark />
+
+              <div>
+                <p className="aegis-label text-[10px] font-semibold uppercase text-[#6F2C0F]">
+                  Aegis Intelligence
+                </p>
+
+                <p className="mt-1 text-xs text-[#8893A3]">
+                  deterministic · auditable reasoning
+                </p>
+              </div>
             </div>
-            <h2 className="mt-2 text-lg font-semibold tracking-tight">{title}</h2>
-            <p className="mt-1 text-xs text-slate-400">{subtitle} · deterministic, auditable reasoning</p>
+
+            <h2 className="aegis-display mt-6 text-2xl font-semibold tracking-tight text-[#071A3D]">
+              {title}
+            </h2>
+
+            <p className="mt-2 text-sm text-[#66758B]">
+              {subtitle}
+            </p>
           </div>
-          <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] uppercase tracking-wide text-slate-400">No black box</span>
+
+          <span className="rounded-full border border-[#D8DEE8] bg-[#F7F8FA] px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#68758A]">
+            No black box
+          </span>
         </div>
 
-        <div className="mt-5 grid gap-2 sm:grid-cols-3">
+        <div className="mt-7 grid gap-4 md:grid-cols-3">
           {items.map((item) => (
-            <div key={item.label} className={`rounded-xl border p-3 ${toneClass[item.tone ?? "slate"]}`}>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-60">{item.label}</p>
-              <p className="mt-1.5 text-sm font-medium leading-5">{item.value}</p>
+            <div
+              key={item.label}
+              className={`rounded-xl border p-5 ${toneClass[item.tone ?? "soft"]}`}
+            >
+              <p className="aegis-label text-[9px] font-semibold uppercase text-[#8A95A5]">
+                {item.label}
+              </p>
+
+              <p className="mt-3 text-sm font-semibold leading-6 text-[#142B4D]">
+                {item.value}
+              </p>
             </div>
           ))}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wide text-slate-500">
-          <span className="rounded-full border border-white/10 px-2 py-1">Grid signal</span>
+        <div className="mt-6 flex flex-wrap items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#8A95A5]">
+          <span className="rounded-full border border-[#D8DEE8] px-3 py-1.5">
+            Grid signal
+          </span>
+
           <span>→</span>
-          <span className="rounded-full border border-white/10 px-2 py-1">Renewable pulse</span>
+
+          <span className="rounded-full border border-[#D8DEE8] px-3 py-1.5">
+            Renewable
+          </span>
+
           <span>→</span>
-          <span className="rounded-full border border-white/10 px-2 py-1">EV flexibility</span>
+
+          <span className="rounded-full border border-[#D8DEE8] px-3 py-1.5">
+            EV flexibility
+          </span>
+
           <span>→</span>
-          <span className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-2 py-1 text-cyan-200">Aegis optimizer</span>
+
+          <span className="rounded-full border border-[#D9CEC6] bg-[#F8F1ED] px-3 py-1.5 text-[#6F2C0F]">
+            Aegis optimizer
+          </span>
         </div>
 
-        {footer && <p className="mt-4 text-xs leading-5 text-slate-500">{footer}</p>}
+        {footer && (
+          <p className="mt-5 text-sm leading-6 text-[#66758B]">
+            {footer}
+          </p>
+        )}
       </div>
     </section>
   );

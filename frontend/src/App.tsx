@@ -12,51 +12,101 @@ const ROLE_LABEL: Record<AuthRole, string> = {
   ev_driver: "EV Driver",
 };
 
+function AegisLogo() {
+  return (
+    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#071A3D] shadow-sm">
+      <span className="text-xl font-semibold text-white">A</span>
+    </div>
+  );
+}
+
 function AuthenticatedApp() {
   const { user, logout } = useAuth();
   const [expired, setExpired] = useState(false);
+
   const role = user?.role;
 
   useEffect(() => {
-    const onExpired = () => setExpired(true);
-    window.addEventListener("aegis-auth-expired", onExpired);
-    return () => window.removeEventListener("aegis-auth-expired", onExpired);
+    const handleExpired = () => setExpired(true);
+
+    window.addEventListener(
+      "aegis-auth-expired",
+      handleExpired,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "aegis-auth-expired",
+        handleExpired,
+      );
+    };
   }, []);
 
   useEffect(() => {
-    if (user) setExpired(false);
+    if (user) {
+      setExpired(false);
+    }
   }, [user]);
 
-  if (!user || !role) return <LoginScreen />;
+  if (!user || !role) {
+    return <LoginScreen />;
+  }
 
-  const page = role === "grid_operator" ? <GridView /> : role === "network_operator" ? <OperatorView /> : <DriverView />;
+  const page =
+    role === "grid_operator" ? (
+      <GridView />
+    ) : role === "network_operator" ? (
+      <OperatorView />
+    ) : (
+      <DriverView />
+    );
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-6 py-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-sm font-bold text-cyan-300">A</div>
-              <div>
-                <h1 className="text-lg font-semibold tracking-tight text-slate-950">Aegis</h1>
-                <p className="text-xs text-slate-500">Renewable-aware EV charging orchestration</p>
+    <div className="min-h-screen bg-[#F7F8FA]">
+      <header className="sticky top-0 z-50 border-b border-[#E0E4E9] bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-4 lg:px-10">
+          <div className="flex items-center gap-3">
+            <AegisLogo />
+
+            <div>
+              <div className="text-lg font-semibold tracking-tight text-[#071A3D]">
+                Aegis
+              </div>
+
+              <div className="text-xs text-[#66758B]">
+                Renewable-aware EV charging orchestration
               </div>
             </div>
           </div>
+
           <div className="flex items-center gap-3">
-            <span className="rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-800">{ROLE_LABEL[role]}</span>
-            <button type="button" onClick={logout} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">Sign out</button>
+            <span className="hidden text-xs font-medium text-[#66758B] md:block">
+              {user.display_name}
+            </span>
+
+            <span className="rounded-full border border-[#D5DAE1] bg-[#F7F8FA] px-3.5 py-2 text-xs font-semibold text-[#071A3D]">
+              {ROLE_LABEL[role]}
+            </span>
+
+            <button
+              type="button"
+              onClick={logout}
+              className="rounded-xl border border-[#D5DAE1] bg-white px-4 py-2 text-xs font-semibold text-[#3D4C64] hover:bg-[#F7F8FA]"
+            >
+              Sign out
+            </button>
           </div>
         </div>
       </header>
+
       {expired && (
-        <div className="mx-auto max-w-7xl px-6 pt-4">
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div className="mx-auto max-w-[1440px] px-6 pt-5 lg:px-10">
+          <div className="rounded-xl border border-[#D9CEC6] bg-[#F8F1ED] px-4 py-3 text-sm text-[#6F2C0F]">
             Your session expired. Please sign in again.
           </div>
         </div>
       )}
+
       {page}
     </div>
   );

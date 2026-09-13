@@ -1,13 +1,23 @@
-import type { DriverRecommendationResponse, DriverSessionStatusResponse } from "../../types/api";
+import type {
+  DriverRecommendationResponse,
+  DriverSessionStatusResponse,
+} from "../../types/api";
 
 interface Props {
-  status: DriverSessionStatusResponse | null;
-  recommendation: DriverRecommendationResponse | null;
+  status:
+    | DriverSessionStatusResponse
+    | null;
+  recommendation:
+    | DriverRecommendationResponse
+    | null;
   loading: boolean;
   error: string | null;
 }
 
-const STATUS_LABEL: Record<string, string> = {
+const STATUS_LABEL: Record<
+  string,
+  string
+> = {
   pending: "Pending",
   scheduled: "Scheduled",
   charging: "Charging now",
@@ -15,28 +25,39 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString(
+    [],
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+  );
 }
 
 function statusMessage(
   status: DriverSessionStatusResponse,
-  recommendation: DriverRecommendationResponse | null,
-): string {
+  recommendation:
+    | DriverRecommendationResponse
+    | null,
+) {
   switch (status.status) {
     case "scheduled":
       return recommendation
-        ? `Waiting for your charging window · starts at ${formatTime(recommendation.window_start)}`
+        ? `Waiting for your charging window · starts at ${formatTime(
+            recommendation.window_start,
+          )}`
         : "Waiting for your charging window.";
+
     case "charging":
       return "Your scheduled charging window is active.";
+
     case "completed":
       return "The scheduled charging window has completed.";
+
     case "cancelled":
       return "This charging session was cancelled.";
+
     default:
       return "Charging session is ready for the next action.";
   }
@@ -50,81 +71,190 @@ export default function SessionStatusPanel({
 }: Props) {
   if (error) {
     return (
-      <section className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-        Couldn't refresh session status: {error}
+      <section className="rounded-2xl border border-[#D9CEC6] bg-[#F8F1ED] p-5 text-sm leading-6 text-[#6F2C0F]">
+        Couldn&apos;t refresh session status:{" "}
+        {error}
       </section>
     );
   }
 
   if (!status) {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
-        {loading ? "Loading session status..." : "No active session yet."}
+      <section className="rounded-2xl border border-[#E1E6EC] bg-white p-6 text-sm text-[#66758B] shadow-[0_8px_24px_rgba(15,36,68,0.04)]">
+        {loading
+          ? "Loading session status…"
+          : "No active session yet."}
       </section>
     );
   }
 
-  const isScheduled = status.status === "scheduled";
-  const hasEnergy = status.cost_so_far > 0 || status.co2_kg_so_far > 0 || status.charging_power_kw > 0;
-  const renewableValue = hasEnergy ? `${status.renewable_share_pct.toFixed(0)}%` : "—";
-  const gridValue = hasEnergy ? `${status.grid_share_pct.toFixed(0)}%` : "—";
+  const isScheduled =
+    status.status === "scheduled";
+
+  const isCharging =
+    status.status === "charging";
+
+  const hasTelemetry =
+    isCharging ||
+    status.cost_so_far > 0 ||
+    status.co2_kg_so_far > 0 ||
+    status.charging_power_kw > 0;
+
+  const renewableValue = hasTelemetry
+    ? `${status.renewable_share_pct.toFixed(
+        0,
+      )}%`
+    : "—";
+
+  const gridValue = hasTelemetry
+    ? `${status.grid_share_pct.toFixed(
+        0,
+      )}%`
+    : "—";
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-          {STATUS_LABEL[status.status] ?? status.status}
+    <section className="rounded-2xl border border-[#E1E6EC] bg-white p-6 shadow-[0_10px_28px_rgba(15,36,68,0.045)] lg:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span
+          className={[
+            "rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
+            isCharging
+              ? "border-[#BFC9D8] bg-[#EEF2F7] text-[#071A3D]"
+              : "border-[#D8DEE8] bg-[#F7F8FA] text-[#66758B]",
+          ].join(" ")}
+        >
+          {STATUS_LABEL[
+            status.status
+          ] ?? status.status}
         </span>
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-          SIMULATED DATA
+
+        <span className="rounded-full border border-[#D9CEC6] bg-[#F8F1ED] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6F2C0F]">
+          Simulated data
         </span>
       </div>
 
-      <p className="mb-4 text-sm text-slate-600">
-        {statusMessage(status, recommendation)}
+      <p className="mt-5 text-base leading-7 text-[#43516A]">
+        {statusMessage(
+          status,
+          recommendation,
+        )}
       </p>
 
-      {isScheduled && recommendation && (
-        <div className="mb-4 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
-          Charging window: <span className="font-medium">
-            {formatTime(recommendation.window_start)} – {formatTime(recommendation.window_end)}
+      {isScheduled &&
+        recommendation && (
+          <div className="mt-5 rounded-xl border border-[#CFD7E4] bg-[#EEF2F7] p-4 text-sm text-[#071A3D]">
+            Charging window:{" "}
+            <span className="font-semibold">
+              {formatTime(
+                recommendation.window_start,
+              )}{" "}
+              –{" "}
+              {formatTime(
+                recommendation.window_end,
+              )}
+            </span>
+          </div>
+        )}
+
+      <div className="mt-8">
+        <div className="flex items-center justify-between">
+          <span className="aegis-label text-[10px] font-semibold uppercase text-[#8A95A5]">
+            State of charge
+          </span>
+
+          <span className="text-base font-semibold text-[#071A3D]">
+            {status.current_soc.toFixed(
+              0,
+            )}
+            %
           </span>
         </div>
-      )}
 
-      <div className="mb-4">
-        <p className="text-xs uppercase tracking-wide text-slate-500">State of charge</p>
-        <div className="mt-1 h-3 w-full rounded-full bg-slate-100">
+        <div className="mt-3 h-3 overflow-hidden rounded-full bg-[#E4E8EE]">
           <div
-            className="h-3 rounded-full bg-blue-600 transition-all"
-            style={{ width: `${Math.min(Math.max(status.current_soc, 0), 100)}%` }}
+            className="h-full rounded-full bg-[#071A3D] transition-all"
+            style={{
+              width: `${Math.min(
+                Math.max(
+                  status.current_soc,
+                  0,
+                ),
+                100,
+              )}%`,
+            }}
           />
         </div>
-        <p className="mt-1 text-sm text-slate-700">{status.current_soc.toFixed(0)}%</p>
       </div>
 
-      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-slate-500">Charging power</dt>
-          <dd className="text-base font-medium text-slate-900">{status.charging_power_kw.toFixed(1)} kW</dd>
+      <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <div className="rounded-xl bg-[#F3F5F7] p-5">
+          <p className="aegis-label text-[9px] font-semibold uppercase text-[#8A95A5]">
+            Charging power
+          </p>
+
+          <p className="mt-2 text-lg font-semibold text-[#071A3D]">
+            {status.charging_power_kw.toFixed(
+              1,
+            )}{" "}
+            kW
+          </p>
         </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-slate-500">Renewable / Grid</dt>
-          <dd className="text-base font-medium text-slate-900"><span className="text-green-700">{renewableValue}</span> / {gridValue}</dd>
+
+        <div className="rounded-xl bg-[#F3F5F7] p-5">
+          <p className="aegis-label text-[9px] font-semibold uppercase text-[#8A95A5]">
+            Renewable / Grid
+          </p>
+
+          <p className="mt-2 text-lg font-semibold text-[#071A3D]">
+            {renewableValue}{" "}
+            <span className="text-[#8A95A5]">
+              /
+            </span>{" "}
+            {gridValue}
+          </p>
         </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-slate-500">Cost so far</dt>
-          <dd className="text-base font-medium text-slate-900">₹{status.cost_so_far.toFixed(2)}</dd>
+
+        <div className="rounded-xl bg-[#F3F5F7] p-5">
+          <p className="aegis-label text-[9px] font-semibold uppercase text-[#8A95A5]">
+            Cost so far
+          </p>
+
+          <p className="mt-2 text-lg font-semibold text-[#071A3D]">
+            ₹
+            {status.cost_so_far.toFixed(
+              2,
+            )}
+          </p>
         </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-slate-500">CO₂ so far</dt>
-          <dd className="text-base font-medium text-slate-900">{status.co2_kg_so_far.toFixed(1)} kg</dd>
+
+        <div className="rounded-xl bg-[#F3F5F7] p-5">
+          <p className="aegis-label text-[9px] font-semibold uppercase text-[#8A95A5]">
+            CO₂ so far
+          </p>
+
+          <p className="mt-2 text-lg font-semibold text-[#071A3D]">
+            {status.co2_kg_so_far.toFixed(
+              1,
+            )}{" "}
+            kg
+          </p>
         </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-slate-500">Green Score</dt>
-          <dd className="text-base font-medium text-slate-900">{typeof status.green_score === "number" ? status.green_score.toFixed(0) : "Not yet calculated"}</dd>
+
+        <div className="rounded-xl border border-[#D9CEC6] bg-[#F8F1ED] p-5">
+          <p className="aegis-label text-[9px] font-semibold uppercase text-[#6F2C0F]">
+            Green score
+          </p>
+
+          <p className="mt-2 text-lg font-semibold text-[#6F2C0F]">
+            {typeof status.green_score ===
+            "number"
+              ? status.green_score.toFixed(
+                  0,
+                )
+              : "Not yet calculated"}
+          </p>
         </div>
-      </dl>
+      </div>
     </section>
   );
 }
