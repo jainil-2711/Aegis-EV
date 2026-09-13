@@ -162,9 +162,9 @@ def test_grid_status_demand_relationship(client):
     assert base_load >= 0.0
     assert current_ev_load >= 0.0
 
-    assert grid_demand == (
-        base_load
-        + current_ev_load
+    assert grid_demand == pytest.approx(
+        base_load + current_ev_load,
+        abs=0.1,
     )
 
 

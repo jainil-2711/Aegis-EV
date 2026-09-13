@@ -59,28 +59,15 @@ def accept_schedule(
 
 
 def override_schedule(
-    db: Session,
-    principal: Principal,
-    req: ScheduleOverrideRequest,
-    ev_id: str | None = None,
+    db: Session, principal: Principal, req: ScheduleOverrideRequest, ev_id: str | None = None
 ) -> ScheduleOverrideResponse:
     ev = get_authorized_ev(db, principal, ev_id)
 
-    now = current_demo_timestamp(get_settings())
-    requested_start = req.requested_start_time or now
-
-    feasible, explanation, alternatives = _check_feasibility(
-        ev,
-        req,
-        current_time=now,
-    )
-
+    feasible, explanation, alternatives = _check_feasibility(ev, req)
     session = _get_or_create_session(db, ev)
-
     active_run = get_active_run(db)
     if active_run is not None:
         session.optimization_run_id = active_run.id
-
     session.overridden = True
     session.accepted = False
 
@@ -90,19 +77,22 @@ def override_schedule(
             if req.requested_power_kw is not None
             else ev.max_charge_kw
         )
-        session.override_started_at = requested_start
+        session.override_started_at = (
+            req.requested_start_time
+            if req.requested_start_time is not None
+            else current_demo_timestamp(get_settings())
+        )
         session.status = SessionStatus.charging.value
     else:
         session.override_power_kw = None
         session.override_started_at = None
-        session.status = SessionStatus.pending.value
 
     db.commit()
     db.refresh(session)
 
     return ScheduleOverrideResponse(
         ev_id=ev.id,
-        overridden=feasible,
+        overridden=True,
         status=SessionStatus(session.status),
         feasible=feasible,
         explanation=explanation,
@@ -110,36 +100,25 @@ def override_schedule(
     )
 
 
-def _check_feasibility(
-    ev: EV,
-    req: ScheduleOverrideRequest,
-    current_time=None,
-) -> tuple[bool, str | None, list[str] | None]:
+def _check_feasibility(ev: EV, req: ScheduleOverrideRequest) -> tuple[bool, str | None, list[str] | None]:
     if req.requested_power_kw is not None and req.requested_power_kw > ev.max_charge_kw:
         return (
             False,
-            f"Charger for {ev.id} supports up to {ev.max_charge_kw} kW; "
-            f"{req.requested_power_kw} kW is not physically available.",
+            f"Charger for {ev.id} supports up to {ev.max_charge_kw} kW; {req.requested_power_kw} kW is not physically available.",
             [
                 f"Charge at the maximum supported {ev.max_charge_kw} kW instead.",
                 "Choose a different charger with higher rated power, if available.",
             ],
         )
-
-    requested_start = req.requested_start_time or current_time
-
-    if requested_start is not None and not (
-        ev.arrival_time <= requested_start <= ev.departure_time
+    if req.requested_start_time is not None and not (
+        ev.arrival_time <= req.requested_start_time <= ev.departure_time
     ):
         return (
             False,
-            f"{ev.id} is not connected at the requested time. "
-            f"Its connection window is {ev.arrival_time} to {ev.departure_time}.",
+            f"Requested start time is outside {ev.id}'s connection window ({ev.arrival_time} to {ev.departure_time}).",
             [
-                "Wait until the EV reaches its connection window.",
-                "Choose a start time within the EV's connection window.",
+                "Choose a start time within your connection window.",
+                "Charge at the assigned charger's supported power when available.",
             ],
         )
-
     return True, None, None
-

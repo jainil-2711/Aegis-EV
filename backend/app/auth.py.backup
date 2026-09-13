@@ -126,33 +126,100 @@ def ensure_demo_users(db: Session) -> None:
 
 
 def _bind_demo_driver_to_ev(db: Session) -> None:
-    """Bind demo drivers to deterministic EVs for the hackathon demo."""
+    """Bind each demo driver account to its own EV (P3).
 
+    --- CHANGE ---------------------------------------------------------
+    Originally bound exactly one driver (USR-DRV-01) to exactly one EV
+    (EV-101) and refused to run again once that binding existed. This
+    generalizes it to N demo driver accounts, each landing on a distinct
+    EV, while staying just as idempotent and safe to call on every
+    startup:
+
+      - A driver that already owns an EV (from a previous run) keeps it.
+        We never move an already-bound driver to a different EV.
+      - USR-DRV-01 keeps the original, documented EV-101 pairing when
+        that EV exists and is unclaimed, so nothing that already relies
+        on that specific pairing breaks.
+      - The remaining driver accounts are spread across EVs with
+        different `flexibility` values (non_flexible/low/medium/high) so
+        each one shows a visibly different charging scenario in the demo
+        UI — a tight non-flexible EV forced into a narrow window looks
+        nothing like a high-flexibility EV that can chase 100% renewable
+        — without hardcoding any EV id beyond the existing EV-101.
+      - If fewer distinct flexibility categories exist than driver
+        accounts, it cycles through whatever categories are available
+        and finally falls back to any unclaimed EV, so this never raises
+        even on a small or unusual seeded dataset.
+    ----------------------------------------------------------------------
+    """
+    # Imported lazily to avoid a module-load cycle: app.services.driver.*
+    # imports app.auth for the Principal type used in authorization checks.
     from app.models.ev import EV
     from app.services.driver.session import DEMO_EV_ID
 
-    demo_mapping = {
-        "USR-DRV-01": DEMO_EV_ID,  # EV-101
-        "USR-DRV-02": "EV-102",
-        "USR-DRV-03": "EV-106",
-        "USR-DRV-04": "EV-103",
-    }
+    driver_ids = [item["id"] for item in DEMO_USERS if item["role"] == ROLE_DRIVER]
+    if not driver_ids:
+        return
+
+    # Respect any binding that already exists — never re-shuffle a driver
+    # who is already bound to an EV, whether from this run or an earlier one.
+    already_bound_drivers: set[str] = set()
+    for ev in db.query(EV).filter(EV.owner_user_id.in_(driver_ids)).all():
+        already_bound_drivers.add(ev.owner_user_id)
+
+    unbound_drivers = [d for d in driver_ids if d not in already_bound_drivers]
+    if not unbound_drivers:
+        return
 
     changed = False
 
-    for driver_id, ev_id in demo_mapping.items():
-        ev = db.get(EV, ev_id)
-
-        if ev is None:
-            continue
-
-        if ev.owner_user_id != driver_id:
-            ev.owner_user_id = driver_id
-            db.add(ev)
+    # The canonical demo driver keeps the original EV-101 pairing whenever
+    # that EV exists and isn't already claimed by someone else.
+    if "USR-DRV-01" in unbound_drivers:
+        canonical_ev = db.get(EV, DEMO_EV_ID)
+        if canonical_ev is not None and canonical_ev.owner_user_id is None:
+            canonical_ev.owner_user_id = "USR-DRV-01"
+            db.add(canonical_ev)
             changed = True
+            unbound_drivers.remove("USR-DRV-01")
+
+    if unbound_drivers:
+        candidates = (
+            db.query(EV)
+            .filter(EV.owner_user_id.is_(None))
+            .order_by(EV.id)
+            .all()
+        )
+        by_flex: dict[str, list[EV]] = {}
+        for ev in candidates:
+            by_flex.setdefault(ev.flexibility, []).append(ev)
+
+        flex_order = ["high", "medium", "low", "non_flexible"]
+        flex_cycle = [f for f in flex_order if f in by_flex] or list(by_flex.keys())
+
+        cycle_idx = 0
+        for driver_id in unbound_drivers:
+            chosen: EV | None = None
+            tries = 0
+            max_tries = max(len(flex_cycle), 1) * 2
+            while chosen is None and flex_cycle and tries < max_tries:
+                flex = flex_cycle[cycle_idx % len(flex_cycle)]
+                cycle_idx += 1
+                tries += 1
+                pool = by_flex.get(flex) or []
+                if pool:
+                    chosen = pool.pop(0)
+            if chosen is None:
+                leftover = [e for e in candidates if e.owner_user_id is None]
+                chosen = leftover[0] if leftover else None
+            if chosen is not None:
+                chosen.owner_user_id = driver_id
+                db.add(chosen)
+                changed = True
 
     if changed:
         db.commit()
+
 
 def authenticate_user(db: Session, email: str, password: str) -> User | None:
     user = db.query(User).filter(User.email == email.strip().lower()).first()

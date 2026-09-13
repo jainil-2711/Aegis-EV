@@ -518,7 +518,7 @@ class OptimizationService:
                 if objective == OperatorObjective.cheapest:
                     coeff = cost_paise_per_var * 10 + carbon_grams_per_var
                 elif objective == OperatorObjective.greenest:
-                    coeff = carbon_grams_per_var * 20 - renewable_bonus_per_var * 8 + cost_paise_per_var
+                    coeff = carbon_grams_per_var * 10 + cost_paise_per_var - renewable_bonus_per_var * 3
                 else:  # balanced
                     coeff = cost_paise_per_var * 7 + carbon_grams_per_var * 3 - renewable_bonus_per_var * 2
 

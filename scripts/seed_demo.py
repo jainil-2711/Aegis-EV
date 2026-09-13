@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.auth import ensure_demo_users  # noqa: E402
+from app.auth import DEMO_USERS, ensure_demo_users  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.data.synthetic.generator import generate_full_dataset  # noqa: E402
 from app.database import SessionLocal, create_all_tables  # noqa: E402
@@ -52,6 +52,26 @@ def seed() -> None:
             f"(seed={settings.seed}, demo_day={settings.demo_day})."
         )
         print("Demo runtime state reset: runs=0, schedule_entries=0, sessions=0, grid_signals=0")
+
+        # CHANGE: print exactly which login maps to which EV, so you don't
+        # have to query the DB by hand to run the 4-driver demo.
+        email_by_user_id = {u["id"]: u["email"] for u in DEMO_USERS}
+        password_by_user_id = {u["id"]: u["password"] for u in DEMO_USERS}
+        bound_evs = (
+            db.query(EV)
+            .filter(EV.owner_user_id.isnot(None))
+            .order_by(EV.owner_user_id)
+            .all()
+        )
+        if bound_evs:
+            print("\nDemo driver logins:")
+            for ev in bound_evs:
+                email = email_by_user_id.get(ev.owner_user_id, ev.owner_user_id)
+                password = password_by_user_id.get(ev.owner_user_id, "?")
+                print(
+                    f"  {email} / {password}  ->  {ev.id}  "
+                    f"(flexibility={ev.flexibility}, {ev.current_soc:.0f}% -> {ev.target_soc:.0f}%)"
+                )
     except Exception:
         db.rollback()
         raise
